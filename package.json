@@ -15,6 +15,7 @@
     "start": "nest start api-gateway",
     "start:dev": "nest start api-gateway --watch",
     "start:gateway": "nest start api-gateway --watch",
+    "start:auth": "nest start auth-service --watch --env-file apps/auth-service/.env",
     "start:booking": "nest start booking-service --watch",
     "start:debug": "nest start api-gateway --debug --watch",
     "start:prod": "node dist/apps/api-gateway/main.js",
