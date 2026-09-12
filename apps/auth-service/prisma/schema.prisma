@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+enum UserRole{
+  USER
+  ADMIN
+}
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  PENDING
+}
+
+enum AuthProvider {
+  GOOGLE
+  GITHUB
+  FACEBOOK
+  MICROSOFT
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String?
+  fullName     String?
+  avatarUrl    String?
+  emailVerifiedAt DateTime?
+  role UserRole @default(USER)
+  status       UserStatus @default(ACTIVE)
+
+  accounts     OAuthAccount[]
+  sessions     Session[]
+  refreshTokens RefreshToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+model OAuthAccount {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider          AuthProvider
+  providerAccountId String
+
+  accessToken       String?
+  refreshToken      String?
+  tokenType         String?
+  scope             String?
+  expiresAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ipAddress String?
+  userAgent String?
+
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model RefreshToken {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String @unique
+
+  sessionId String?
+
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model VerificationToken {
+  id String @id @default(uuid())
+
+  email     String
+  tokenHash String @unique
+
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
