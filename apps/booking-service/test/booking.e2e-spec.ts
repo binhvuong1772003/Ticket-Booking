@@ -5,6 +5,7 @@ import type { ClientProxy, MicroserviceOptions } from '@nestjs/microservices';
 import type { AddressInfo, Server } from 'node:net';
 import { firstValueFrom, timeout } from 'rxjs';
 import { AppModule } from '../src/app.module.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 describe('Booking service (TCP e2e)', () => {
   let app: INestMicroservice;

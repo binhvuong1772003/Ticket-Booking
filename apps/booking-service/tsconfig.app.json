@@ -1,6 +1,8 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "composite": true,
+    "declaration": true,
     "rootDir": "./src",
     "outDir": "../../dist/apps/booking-service",
     "tsBuildInfoFile": "../../dist/apps/booking-service/tsconfig.app.tsbuildinfo",
