@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class EmailTemplate {
-  welcome(name: string): string {
+  verification(name: string, verifyURL: string): string {
     return `
-      <h1>Welcome ${name}</h1>
-      <p>Your account has been created successfully.</p>
-    `;
+    <h2>Hello ${name ?? ''} - Email Verification</h2>
+    <p>Click the link below to verify your email:</p>
+    <a href="${verifyURL}">${verifyURL}</a>
+  `;
   }
 
   bookingConfirmed(customerName: string, bookingId: string): string {

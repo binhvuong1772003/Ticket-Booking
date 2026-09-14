@@ -1,29 +1,30 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { UserRegisteredEvent } from '../../../../../../../../libs/contracts/src/events/auth/user-registered.event';
-import { SmtpProvider } from '../../infrastructure/email.provider.js';
-import { EmailTemplate } from '../../infrastructure/email.template.js';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class UserRegisteredEmailHandler {
-  constructor(
-    private readonly smtpProvider: SmtpProvider,
-    private readonly emailTemplate: EmailTemplate,
-  ) {}
-  private readonly logger = new Logger(UserRegisteredEmailHandler.name);
+  constructor(@InjectQueue('email') private readonly emailQueue: Queue) {}
 
   async handleUserRegistered(event: UserRegisteredEvent) {
-    const html = this.emailTemplate.welcome(event.payload.email);
-    await this.smtpProvider.sendEmail(
-      event.payload.email,
-      'Welcome to our platform',
-      html,
+    await this.emailQueue.add(
+      'verification-email',
+      {
+        eventId: event.eventId,
+        to: event.payload.email,
+        verificationToken: event.payload.verificationToken,
+      },
+      {
+        jobId: event.eventId,
+        attempts: 5,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
     );
-    this.logger.log(
-      `Received user registered event for ${event.payload.email}`,
-    );
-
-    this.logger.debug(JSON.stringify(event));
-
-    return { received: true };
   }
 }
