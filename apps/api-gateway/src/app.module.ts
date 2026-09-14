@@ -1,21 +1,48 @@
 import { Module } from '@nestjs/common';
 import { createObserveModule } from '@nestjs/observe';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ApolloGatewayDriver, ApolloGatewayDriverConfig } from '@nestjs/apollo';
+import { IntrospectAndCompose } from '@apollo/gateway';
+
+const observeAppKey = process.env.OBSERVE_APP_KEY?.trim();
+const observeAppSecret = process.env.OBSERVE_APP_SECRET?.trim();
+const observeEnabled = Boolean(observeAppKey && observeAppSecret);
+const authServiceUrl =
+  process.env.AUTH_SERVICE_URL ?? 'http://localhost:4001/graphql';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
   imports: [
-    // Distributed tracing, auto-correlated logs, request/job metrics, error
-    // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
-    ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
-      serviceId: 'ticket-booking',
+    ...(observeEnabled
+      ? [
+          ObserveModule.forRoot({
+            appKey: observeAppKey!,
+            appSecret: observeAppSecret!,
+            serviceId: process.env.OBSERVE_SERVICE_ID ?? 'ticket-booking',
+          }),
+        ]
+      : []),
+    GraphQLModule.forRoot<ApolloGatewayDriverConfig>({
+      driver: ApolloGatewayDriver,
+
+      gateway: {
+        supergraphSdl: new IntrospectAndCompose({
+          subgraphs: [
+            {
+              name: 'auth',
+              url: authServiceUrl,
+            },
+            // {
+            //   name: 'booking',
+            //   url: 'http://localhost:4002/graphql',
+            // },
+          ],
+        }),
+      },
     }),
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}
+
+export { observeEnabled };
