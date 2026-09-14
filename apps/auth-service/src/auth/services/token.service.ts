@@ -49,6 +49,87 @@ export class TokenService {
     });
     return { accessToken, refreshToken };
   }
+
+  async refreshAccessToken(refreshToken: string): Promise<AuthTokens> {
+    const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+    const now = new Date();
+    const storedToken = await db.refreshToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (
+      !storedToken ||
+      storedToken.revokedAt ||
+      storedToken.expiresAt <= now ||
+      !storedToken.sessionId
+    ) {
+      throw new ApiError('Invalid or expired refresh token', {
+        code: 'UNAUTHENTICATED',
+      });
+    }
+
+    const session = await db.session.findUnique({
+      where: { id: storedToken.sessionId },
+      select: { id: true, revokedAt: true, expiresAt: true },
+    });
+
+    if (!session || session.revokedAt || session.expiresAt <= now) {
+      throw new ApiError('Invalid or expired refresh session', {
+        code: 'UNAUTHENTICATED',
+      });
+    }
+
+    const user = await db.user.findUnique({
+      where: { id: storedToken.userId },
+      select: { id: true, role: true },
+    });
+
+    if (!user) {
+      throw new ApiError('User not found', {
+        code: 'UNAUTHENTICATED',
+      });
+    }
+
+    const nextRefreshToken = randomBytes(48).toString('base64url');
+    const nextRefreshTokenHash = createHash('sha256')
+      .update(nextRefreshToken)
+      .digest('hex');
+    const nextExpiresAt = new Date(Date.now() + REFRESH_EXPIRES_MS);
+
+    await db.$transaction(async (tx) => {
+      const revoked = await tx.refreshToken.updateMany({
+        where: {
+          id: storedToken.id,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { revokedAt: now },
+      });
+
+      if (revoked.count !== 1) {
+        throw new ApiError('Refresh token has already been used', {
+          code: 'UNAUTHENTICATED',
+        });
+      }
+
+      await tx.refreshToken.create({
+        data: {
+          tokenHash: nextRefreshTokenHash,
+          userId: user.id,
+          sessionId: session.id,
+          expiresAt: nextExpiresAt,
+        },
+      });
+    });
+
+    const accessToken = this.jwtService.sign({
+      sub: user.id,
+      role: user.role as UserRole,
+    });
+
+    return { accessToken, refreshToken: nextRefreshToken };
+  }
+
   async revokeRefreshToken(refreshToken: string): Promise<void> {
     const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
 
@@ -101,5 +182,30 @@ export class TokenService {
         },
       }),
     ]);
+  }
+  async emailVerificationToken(email: string): Promise<string> {
+    const rawToken = randomBytes(32).toString('hex');
+    const verificationTokenHash = createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    await db.$transaction(async (tx) => {
+      await tx.verificationToken.deleteMany({
+        where: {
+          email,
+          usedAt: null,
+        },
+      });
+      await tx.verificationToken.create({
+        data: {
+          email,
+          tokenHash: verificationTokenHash,
+          expiresAt,
+        },
+      });
+    });
+
+    return rawToken;
   }
 }

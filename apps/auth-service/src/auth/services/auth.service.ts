@@ -7,6 +7,8 @@ import { ApiError } from '../../common/errors/api-error';
 import { TokenService } from './token.service';
 import { LoginInput } from '../dto/login.input';
 import { RegisterInput } from '../dto/register.input';
+import { createHash, randomUUID } from 'node:crypto';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -14,6 +16,27 @@ export class AuthService {
     @Inject('KAFKA_CLIENT')
     private readonly kafkaClient: ClientKafka,
   ) {}
+
+  private async publishVerificationEmail(
+    userId: string,
+    email: string,
+    createdAt: Date,
+    verificationToken: string,
+  ) {
+    await firstValueFrom(
+      this.kafkaClient.emit('auth.user.registered', {
+        eventId: randomUUID(),
+        eventType: 'auth.user.registered',
+        occurredAt: new Date().toISOString(),
+        payload: {
+          userId,
+          email,
+          createdAt: createdAt.toISOString(),
+          verificationToken,
+        },
+      }),
+    );
+  }
 
   async login(input: LoginInput) {
     const user = await db.user.findUnique({
@@ -33,21 +56,10 @@ export class AuthService {
     }
     return this.tokenService.issueTokens(user.id);
   }
-  async revokeSession(sessionId: string) {
-    const session = await db.session.findUnique({
-      where: { id: sessionId },
-    });
-    if (!session) {
-      throw new ApiError('Session not found', {
-        code: 'NOT_FOUND',
-        details: { sessionId },
-      });
-    }
-    await db.session.update({
-      where: { id: sessionId },
-      data: { revokedAt: new Date() },
-    });
+  async refreshAccessToken(refreshToken: string) {
+    return this.tokenService.refreshAccessToken(refreshToken);
   }
+
   async logout(refreshToken: string) {
     await this.tokenService.revokeSession(refreshToken);
   }
@@ -70,18 +82,75 @@ export class AuthService {
         role: 'USER',
       },
     });
-    await firstValueFrom(
-      this.kafkaClient.emit('auth.user.registered', {
-        eventId: crypto.randomUUID(),
-        eventType: 'auth.user.registered',
-        occurredAt: new Date().toISOString(),
-        payload: {
-          userId: user.id,
-          email: user.email,
-          createdAt: user.createdAt,
-        },
-      }),
+    const verificationToken =
+      await this.tokenService.emailVerificationToken(email);
+    await this.publishVerificationEmail(
+      user.id,
+      user.email,
+      user.createdAt,
+      verificationToken,
     );
     return this.tokenService.issueTokens(user.id);
+  }
+  async verifyEmail(token: string) {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const now = new Date();
+    const verificationToken = await db.verificationToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (
+      !verificationToken ||
+      verificationToken.usedAt ||
+      verificationToken.expiresAt <= now
+    ) {
+      throw new ApiError('Invalid or expired verification token', {
+        code: 'UNAUTHENTICATED',
+      });
+    }
+
+    await db.$transaction(async (tx) => {
+      const consumed = await tx.verificationToken.updateMany({
+        where: {
+          id: verificationToken.id,
+          usedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { usedAt: now },
+      });
+
+      if (consumed.count !== 1) {
+        throw new ApiError('Invalid or expired verification token', {
+          code: 'UNAUTHENTICATED',
+        });
+      }
+
+      await tx.user.update({
+        where: { email: verificationToken.email },
+        data: { emailVerifiedAt: now },
+      });
+    });
+  }
+  async resendVerificationEmail(email: string) {
+    const user = await db.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      throw new ApiError('User not found', { code: 'NOT_FOUND' });
+    }
+
+    if (user.emailVerifiedAt) {
+      return;
+    }
+
+    const verificationToken =
+      await this.tokenService.emailVerificationToken(email);
+    await this.publishVerificationEmail(
+      user.id,
+      user.email,
+      user.createdAt,
+      verificationToken,
+    );
   }
 }
