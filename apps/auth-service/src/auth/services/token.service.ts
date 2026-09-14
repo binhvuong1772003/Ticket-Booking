@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { db } from '../../db/prisma';
 import { ApiError } from '../../common/errors/api-error';
 import type { UserRole, AuthTokens, TokenMeta } from '../auth.types';
+
 const REFRESH_EXPIRES_MS = 30 * 24 * 60 * 60 * 1000;
 @Injectable()
 export class TokenService {

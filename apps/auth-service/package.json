@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "bun src/main.ts",
-    "start:dev": "bun --watc.h src/maints",
+    "start:dev": "bun --watch src/main.ts",
     "start:prod": "bun src/main.ts",
     "prisma:generate": "bunx prisma generate",
     "prisma:push": "bunx prisma db push"

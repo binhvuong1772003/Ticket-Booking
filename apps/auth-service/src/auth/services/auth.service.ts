@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { ClientKafka } from '@nestjs/microservices';
+import { firstValueFrom } from 'rxjs';
 import * as bcrypt from 'bcrypt';
 import { db } from '../../db/prisma';
 import { ApiError } from '../../common/errors/api-error';
@@ -7,7 +9,12 @@ import { LoginInput } from '../dto/login.input';
 import { RegisterInput } from '../dto/register.input';
 @Injectable()
 export class AuthService {
-  constructor(private readonly tokenService: TokenService) {}
+  constructor(
+    private readonly tokenService: TokenService,
+    @Inject('KAFKA_CLIENT')
+    private readonly kafkaClient: ClientKafka,
+  ) {}
+
   async login(input: LoginInput) {
     const user = await db.user.findUnique({
       where: {
@@ -63,6 +70,18 @@ export class AuthService {
         role: 'USER',
       },
     });
+    await firstValueFrom(
+      this.kafkaClient.emit('auth.user.registered', {
+        eventId: crypto.randomUUID(),
+        eventType: 'auth.user.registered',
+        occurredAt: new Date().toISOString(),
+        payload: {
+          userId: user.id,
+          email: user.email,
+          createdAt: user.createdAt,
+        },
+      }),
+    );
     return this.tokenService.issueTokens(user.id);
   }
 }

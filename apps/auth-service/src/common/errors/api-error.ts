@@ -6,7 +6,8 @@ export type ApiErrorCode =
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'CONFLICT'
-  | 'INTERNAL_SERVER_ERROR';
+  | 'INTERNAL_SERVER_ERROR'
+  | 'SERVICE_UNAVAILABLE';
 
 type ApiErrorOptions = {
   code: ApiErrorCode;
