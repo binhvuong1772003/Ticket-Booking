@@ -16,7 +16,18 @@
       "entryFile": "main",
       "sourceRoot": "apps/api-gateway/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/api-gateway/tsconfig.app.json"
+        "tsConfigPath": "apps/api-gateway/tsconfig.app.json",
+        "deleteOutDir": false
+      }
+    },
+    "auth-service": {
+      "type": "application",
+      "root": "apps/auth-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/auth-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/auth-service/tsconfig.app.json",
+        "deleteOutDir": false
       }
     },
     "booking-service": {
@@ -28,13 +39,13 @@
         "tsConfigPath": "apps/booking-service/tsconfig.app.json"
       }
     },
-    "auth-service": {
+    "notification-service": {
       "type": "application",
-      "root": "apps/auth-service",
+      "root": "apps/notification-service",
       "entryFile": "main",
-      "sourceRoot": "apps/auth-service/src",
+      "sourceRoot": "apps/notification-service/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/auth-service/tsconfig.app.json",
+        "tsConfigPath": "apps/notification-service/tsconfig.app.json",
         "deleteOutDir": false
       }
     }

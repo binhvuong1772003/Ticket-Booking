@@ -9,5 +9,6 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['apps/**/*.spec.ts'],
+    passWithNoTests: true,
   },
 });

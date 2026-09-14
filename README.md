@@ -1,12 +1,45 @@
 # Ticket Booking — NestJS monorepo
 
+## Bun workspaces
+
+`package.json` gốc khai báo `"workspaces": ["apps/*"]`. Mỗi app có một
+`package.json` riêng và cả repository dùng chung `bun.lock` ở gốc.
+`bunfig.toml` dùng `linker = "hoisted"` để các app đã build trong `dist/apps`
+resolve được dependency từ `node_modules` chung. `--cwd` vẫn thêm dependency
+vào manifest riêng của app. Mọi thư mục `node_modules` đều được Git bỏ qua.
+Các dependency và công cụ dùng chung hiện vẫn được giữ ở gốc để phục vụ
+build, test và chạy code trong `dist/apps`. Các app khai báo dependency runtime
+của mình; dependency mới dành riêng cho app được thêm bằng `--cwd`.
+
+Chạy tại thư mục `ticket-booking`:
+
+```powershell
+bun install
+# Cài Apollo cho gateway (GraphQL 16 tương thích Apollo Gateway/Server)
+bun add @apollo/gateway @apollo/server @nestjs/graphql @nestjs/apollo @as-integrations/express5 "graphql@^16.11.0" --cwd apps/api-gateway
+# Build hoặc chạy gateway qua workspace
+bun run --cwd apps/api-gateway build
+bun run --cwd apps/api-gateway start:dev
+```
+
+Lệnh `bun add` trên cập nhật `apps/api-gateway/package.json` và lockfile chung.
+Các lệnh build/chạy tại gốc dùng cấu hình Nest monorepo. `auth-service` là
+GraphQL subgraph chạy ở cổng 4001 và yêu cầu `JWT_SECRET`, `DATABASE_URL`.
+
+Nest Observe chỉ được bật khi có đủ `OBSERVE_APP_KEY` và `OBSERVE_APP_SECRET`.
+Nếu chưa có credential thật, gateway tự tắt Observe để tránh lỗi telemetry 401.
+
 ## Cấu trúc dự án
 
 ```text
 apps/
   api-gateway/
-    src/                 # HTTP API, main.ts và AppModule
-    test/                # HTTP e2e tests
+    src/                 # Gateway GraphQL, main.ts và AppModule
+    test/                # GraphQL e2e tests
+    tsconfig.app.json
+  auth-service/
+    src/                 # Auth GraphQL subgraph
+    prisma/              # Prisma schema
     tsconfig.app.json
   booking-service/
     src/
@@ -26,53 +59,63 @@ Chạy các lệnh dưới đây trong thư mục `ticket-booking` (nơi có fil
 bun install
 ```
 
-Mở hai terminal, cùng ở thư mục `ticket-booking`:
+Mở ba terminal, cùng ở thư mục `ticket-booking`:
 
 ```powershell
-# Terminal 1: HTTP gateway, mặc định cổng 3000
+# Terminal 1: Auth GraphQL subgraph, cổng 4001
+bun run start:auth
+```
+
+```powershell
+# Terminal 2: GraphQL gateway, cổng 3000
 bun run start:gateway
 ```
 
 ```powershell
-# Terminal 2: TCP booking service, mặc định 127.0.0.1:3001
+# Terminal 3: TCP booking service, cổng 3001
 bun run start:booking
 ```
 
-Gateway hiện giữ endpoint `GET /` trả về `Hello World!`. Booking service nhận
-message `booking.health` và trả về `{ service: 'booking-service', status: 'ok' }`.
-Cổng 3001 dùng TCP của NestJS, không truy cập trực tiếp bằng trình duyệt.
-Đây là khung hai ứng dụng; chưa có API tạo đặt vé, database hoặc luồng gọi từ
-gateway sang booking service. Kiểm thử TCP bên dưới minh họa cách gọi bằng
-`ClientProxy`.
+Gateway cung cấp GraphQL tại `POST /graphql` và kết hợp schema từ auth service.
+Auth service có query `{ health }`. Booking service nhận message `booking.health`
+và trả về `{ service: 'booking-service', status: 'ok' }`. Cổng 3001 dùng TCP
+của NestJS, không truy cập trực tiếp bằng trình duyệt.
 
-Đổi cổng bằng biến môi trường PowerShell trước khi chạy:
+Đổi cổng hoặc URL bằng biến môi trường PowerShell trước khi chạy:
 
 ```powershell
-$env:PORT = '3000'         # Gateway
+$env:PORT = '3000'                                  # Gateway
+$env:AUTH_SERVICE_URL = 'http://localhost:4001/graphql'
+$env:AUTH_PORT = '4001'                             # Auth service
+$env:JWT_SECRET = 'local-development-secret'
+$env:DATABASE_URL = 'postgresql://user:password@localhost:5432/ticket_booking'
 $env:BOOKING_HOST = '127.0.0.1'
-$env:BOOKING_PORT = '3001' # Booking service
+$env:BOOKING_PORT = '3001'                          # Booking service
 ```
 
-Các entry point hiện đọc biến môi trường của tiến trình; chưa tự nạp file `.env`.
+Nest Observe mặc định tắt trong local development. Chỉ đặt
+`OBSERVE_APP_KEY`, `OBSERVE_APP_SECRET` và tùy chọn `OBSERVE_SERVICE_ID` khi có
+credential hợp lệ. Auth service tự nạp `.env` khi chạy bằng script ở root.
 
 ## Build và kiểm tra
 
 ```powershell
-bun run build             # Build cả hai ứng dụng
+bun run build             # Build gateway, auth và booking
 bun run test              # Unit tests
-bun run test:e2e          # HTTP và TCP tests
+bun run test:e2e          # GraphQL và TCP tests
 bun run lint
 ```
 
 Sau khi build, chạy mỗi lệnh trong một terminal:
 
 ```powershell
+bun run start:auth:prod    # node dist/apps/auth-service/main.js
 bun run start:prod         # node dist/apps/api-gateway/main.js
 bun run start:booking:prod # node dist/apps/booking-service/main.js
 ```
 
-`bun run build:gateway` và `bun run build:booking` build riêng từng ứng dụng.
-`bun run start` / `bun run start:dev` mặc định chọn gateway.
+`bun run build:gateway`, `bun run build:auth` và `bun run build:booking` build
+riêng từng ứng dụng. `bun run start` / `bun run start:dev` mặc định chọn gateway.
 Mỗi ứng dụng có `outDir` và cache TypeScript riêng để build không xóa hoặc ghi đè
 ứng dụng còn lại. `tsconfig.build.json` ở gốc trỏ về cấu hình build của gateway
 để tương thích với các công cụ đang dùng đường dẫn này.
