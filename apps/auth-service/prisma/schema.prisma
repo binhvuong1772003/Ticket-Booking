@@ -1,12 +1,15 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/auth-prisma"
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 enum UserRole{
   USER
+  ORGANIZER
   ADMIN
 }
 enum UserStatus {

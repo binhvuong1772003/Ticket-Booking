@@ -6,7 +6,7 @@ import {
   ApolloFederationDriver,
   ApolloFederationDriverConfig,
 } from '@nestjs/apollo';
-import { AuthModule } from './auth/auth.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { ApiError } from './common/errors/api-error.js';
 
 @Module({
@@ -16,6 +16,10 @@ import { ApiError } from './common/errors/api-error.js';
       autoSchemaFile: {
         federation: 2,
       },
+      context: ({ req, res }: { req: any; res: any }) => ({
+        req,
+        res,
+      }),
     }),
     AuthModule,
   ],

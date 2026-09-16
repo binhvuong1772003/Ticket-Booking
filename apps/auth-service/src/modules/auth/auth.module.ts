@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 
-import { AuthResolver } from './auth.resolver.js';
-import { TokenService } from './services/token.service.js';
-import { AuthService } from './services/auth.service.js';
+import { AuthResolver } from './presentation/graphql/auth.resolver.js';
+import { TokenService } from './application/services/token.service.js';
+import { AuthService } from './application/services/auth.service.js';
+import { GoogleAuthController } from '../oauth/google/google-auth.controller.js';
+import { GoogleAuthService } from '../oauth/google/google-auth.service.js';
 
 const jwtSecret = process.env.JWT_SECRET;
 
@@ -35,7 +37,8 @@ if (!jwtSecret) {
       },
     }),
   ],
-  providers: [AuthResolver, TokenService, AuthService],
+  controllers: [GoogleAuthController],
+  providers: [AuthResolver, TokenService, AuthService, GoogleAuthService],
   exports: [TokenService],
 })
 export class AuthModule {}

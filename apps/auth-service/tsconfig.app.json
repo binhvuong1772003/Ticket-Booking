@@ -3,6 +3,7 @@
   "compilerOptions": {
     "composite": true,
     "declaration": true,
+    "allowJs": true,
     "rootDir": "./src",
     "outDir": "../../dist/apps/auth-service",
     "tsBuildInfoFile": "../../dist/apps/auth-service/tsconfig.app.tsbuildinfo",

@@ -2,11 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import * as bcrypt from 'bcrypt';
-import { db } from '../../db/prisma';
-import { ApiError } from '../../common/errors/api-error';
-import { TokenService } from './token.service';
-import { LoginInput } from '../dto/login.input';
-import { RegisterInput } from '../dto/register.input';
+import { db } from '../../../../infrastructure/persistence/prisma.js';
+import { ApiError } from '../../../../common/errors/api-error.js';
+import { TokenService } from './token.service.js';
+import { LoginInput } from '../../presentation/graphql/inputs/login.input.js';
+import { RegisterInput } from '../../presentation/graphql/inputs/register.input.js';
 import { createHash, randomUUID } from 'node:crypto';
 
 @Injectable()
