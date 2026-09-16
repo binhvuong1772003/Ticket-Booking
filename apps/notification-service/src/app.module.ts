@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { EmailModule } from './messaging/modules/email/email.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -10,7 +10,7 @@ import { EmailModule } from './messaging/modules/email/email.module.js';
         port: Number(process.env.REDIS_PORT ?? 6380),
       },
     }),
-    EmailModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}
