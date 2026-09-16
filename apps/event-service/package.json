@@ -1,0 +1,33 @@
+{
+  "name": "@ticket-booking/event-service",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run --cwd ../.. build:event",
+    "start": "bun run --cwd ../.. start:event",
+    "start:dev": "bun run --cwd ../.. start:event",
+    "start:prod": "bun run --cwd ../.. start:event:prod",
+    "prisma:generate": "bunx prisma generate",
+    "prisma:push": "bunx prisma db push"
+  },
+  "dependencies": {
+    "@apollo/subgraph": "2.14.4",
+    "@nestjs/apollo": "^14.0.0",
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/graphql": "^14.0.0",
+    "@nestjs/jwt": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "@prisma/client": "6.19.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "dotenv": "^17.4.2",
+    "graphql": "^16.11.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "prisma": "6.19.0"
+  }
+}

@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  ARCHIVED
+}
+
+enum EventSessionStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+model Category {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name     String
+  slug     String  @unique
+  isActive Boolean @default(true)
+
+  events Event[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("categories")
+}
+
+model Event {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // UUID từ auth-service: lưu String, không dùng @db.ObjectId.
+  ownerId String
+
+  categoryId String?   @db.ObjectId
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  title         String
+  slug          String  @unique
+  summary       String?
+  description   String?
+  coverImageUrl String?
+
+  // Tên cá nhân, nhóm hoặc thương hiệu hiển thị công khai.
+  organizerDisplayName String?
+
+  // Thông tin liên hệ công khai.
+  contactEmail String?
+  contactPhone String?
+
+  status EventStatus @default(DRAFT)
+
+  publishedAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  archivedAt         DateTime?
+
+  // Tăng khi event hoặc session của event thay đổi.
+  version Int @default(1)
+
+  sessions EventSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, status])
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@map("events")
+}
+
+model EventSession {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  eventId String @db.ObjectId
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  name String?
+
+  venueName    String?
+  venueAddress String?
+  city         String?
+  countryCode  String?
+
+  // Nullable để hỗ trợ bản nháp chưa hoàn chỉnh.
+  startsAt DateTime?
+  endsAt   DateTime?
+  timezone String    @default("Asia/Ho_Chi_Minh")
+
+  // Sức chứa của suất diễn; không phải tồn vé.
+  capacity Int?
+
+  status EventSessionStatus @default(SCHEDULED)
+
+  cancelledAt        DateTime?
+  cancellationReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId, startsAt])
+  @@index([status, startsAt])
+  @@map("event_sessions")
+}
+
+model OutboxEvent {
+  // Dùng làm message ID để consumer chống xử lý trùng.
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // ID Event có thay đổi.
+  aggregateId String @db.ObjectId
+
+  // EventPublished, EventUpdated, EventCancelled...
+  eventType String
+
+  aggregateVersion Int
+  schemaVersion    Int @default(1)
+
+  payload Json
+
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError     String?
+
+  @@index([publishedAt, nextAttemptAt, createdAt])
+  @@index([aggregateId, aggregateVersion])
+  @@map("outbox_events")
+}
