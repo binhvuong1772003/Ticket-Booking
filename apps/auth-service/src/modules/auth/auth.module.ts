@@ -7,6 +7,7 @@ import { TokenService } from './application/services/token.service.js';
 import { AuthService } from './application/services/auth.service.js';
 import { GoogleAuthController } from '../oauth/google/google-auth.controller.js';
 import { GoogleAuthService } from '../oauth/google/google-auth.service.js';
+import { AdminGuard } from './presentation/graphql/guards/admin.guard.js';
 
 const jwtSecret = process.env.JWT_SECRET;
 
@@ -38,7 +39,13 @@ if (!jwtSecret) {
     }),
   ],
   controllers: [GoogleAuthController],
-  providers: [AuthResolver, TokenService, AuthService, GoogleAuthService],
+  providers: [
+    AuthResolver,
+    TokenService,
+    AuthService,
+    GoogleAuthService,
+    AdminGuard,
+  ],
   exports: [TokenService],
 })
 export class AuthModule {}

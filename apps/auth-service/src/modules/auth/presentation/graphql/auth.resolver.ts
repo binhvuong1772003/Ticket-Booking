@@ -1,3 +1,4 @@
+import { UseGuards } from '@nestjs/common';
 import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { Request, Response } from 'express';
 import { ApiError } from '../../../../common/errors/api-error.js';
@@ -5,6 +6,8 @@ import { AuthService } from '../../application/services/auth.service.js';
 import { AuthTokensPayload } from './models/auth-tokens.payload.js';
 import { LoginInput } from './inputs/login.input.js';
 import { RegisterInput } from './inputs/register.input.js';
+import { UpdateUserRoleInput } from './inputs/update-user-role.input.js';
+import { AdminGuard } from './guards/admin.guard.js';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 const REFRESH_TOKEN_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
@@ -106,6 +109,16 @@ export class AuthResolver {
     }
 
     clearRefreshTokenCookie(context.res);
+    return true;
+  }
+
+  @UseGuards(AdminGuard)
+  @Mutation(() => Boolean)
+  async updateUserRole(
+    @Args('input', { type: () => UpdateUserRoleInput })
+    input: UpdateUserRoleInput,
+  ) {
+    await this.authService.updateUserRole(input);
     return true;
   }
 

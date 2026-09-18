@@ -2,11 +2,17 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import * as bcrypt from 'bcrypt';
+import { Prisma } from '@prisma/client';
+import type { UserRole } from '../../../../generated/auth-prisma/enums.js';
 import { db } from '../../../../infrastructure/persistence/prisma.js';
 import { ApiError } from '../../../../common/errors/api-error.js';
 import { TokenService } from './token.service.js';
 import { LoginInput } from '../../presentation/graphql/inputs/login.input.js';
 import { RegisterInput } from '../../presentation/graphql/inputs/register.input.js';
+import {
+  AssignableUserRole,
+  UpdateUserRoleInput,
+} from '../../presentation/graphql/inputs/update-user-role.input.js';
 import { createHash, randomUUID } from 'node:crypto';
 
 @Injectable()
@@ -152,5 +158,32 @@ export class AuthService {
       user.createdAt,
       verificationToken,
     );
+  }
+
+  async updateUserRole(input: UpdateUserRoleInput) {
+    if ((input.role as string) === 'ADMIN') {
+      throw new ApiError('ADMIN role cannot be assigned here', {
+        code: 'FORBIDDEN',
+      });
+    }
+
+    try {
+      return await db.user.update({
+        where: { id: input.userId },
+        data: {
+          role: input.role as UserRole,
+        },
+        select: { id: true, role: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new ApiError('User not found', { code: 'NOT_FOUND' });
+      }
+
+      throw error;
+    }
   }
 }
