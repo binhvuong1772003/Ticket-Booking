@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package inventory;
+
+service InventoryService {
+  rpc Reserve (ReserveRequest) returns (ReserveResponse);
+  rpc Release (ReleaseRequest) returns (ReleaseResponse);
+}
+
+message ReserveRequest {
+  string session_id = 1;
+  string ticket_type_id = 2;
+  int32 quantity = 3;
+  string booking_id = 4;
+  string user_id = 5;
+}
+
+message ReserveResponse {
+  bool success = 1;
+  string reservation_id = 2;
+  string message = 3;
+}
+
+message ReleaseRequest {
+  string reservation_id = 1;
+  string booking_id = 2;
+}
+
+message ReleaseResponse {
+  bool success = 1;
+  string message = 2;
+}

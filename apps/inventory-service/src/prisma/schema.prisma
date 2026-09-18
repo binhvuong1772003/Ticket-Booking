@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/inventory-prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+enum HoldStatus {
+  ACTIVE
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
+
+model Inventory {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+
+  // ID logic từ Event Service
+  // Không tạo FK cross-service
+  ticketTypeId String   @unique
+
+  total        Int
+  available Int
+  reserved     Int      @default(0)
+  sold         Int      @default(0)
+
+  // Dùng nếu sau này implement optimistic locking
+  version      Int      @default(0)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  holds        InventoryHold[]
+
+  @@map("inventories")
+}
+
+model InventoryHold {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+
+  inventoryId String   @db.ObjectId
+  bookingId   String
+  userId      String
+
+  quantity    Int
+
+  status      HoldStatus @default(ACTIVE)
+
+  // Ví dụ giữ vé trong 10 phút
+  expiresAt   DateTime
+
+  confirmedAt DateTime?
+  releasedAt  DateTime?
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+
+  // Một booking không được tạo nhiều hold
+  // cho cùng inventory
+  @@unique([bookingId, inventoryId])
+
+  @@index([inventoryId, status])
+  @@index([status, expiresAt])
+
+  @@map("inventory_holds")
+}
