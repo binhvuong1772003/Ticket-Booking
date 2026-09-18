@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/booking-prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+model Booking {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // IDs owned by other services. No cross-service database foreign keys.
+  userId    String
+  eventId   String
+  sessionId String
+
+  status        BookingStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+
+  subtotal       Decimal @db.Decimal128
+  discountAmount Decimal @default(0) @db.Decimal128
+  feeAmount      Decimal @default(0) @db.Decimal128
+  totalAmount    Decimal @db.Decimal128
+  currency       String  @default("USD")
+
+  paymentId String?
+  expiresAt DateTime?
+
+  confirmedAt       DateTime?
+  cancelledAt       DateTime?
+  cancellationReason String?
+  expiredAt         DateTime?
+  paidAt            DateTime?
+  paymentFailedAt   DateTime?
+  refundedAt        DateTime?
+
+  version Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items BookingItem[]
+
+  @@index([userId, createdAt])
+  @@index([eventId])
+  @@index([sessionId, status])
+  @@index([status, expiresAt])
+  @@index([paymentStatus, createdAt])
+  @@map("bookings")
+}
+
+model BookingItem {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  bookingId    String   @db.ObjectId
+  ticketTypeId String
+
+  ticketTypeName String
+  ticketTypeCode String
+
+  quantity  Int
+  unitPrice Decimal @db.Decimal128
+  subtotal  Decimal @db.Decimal128
+
+  reservationId String?
+
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, ticketTypeId])
+  @@index([ticketTypeId])
+  @@index([reservationId])
+  @@map("booking_items")
+}
