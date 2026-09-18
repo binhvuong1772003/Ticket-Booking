@@ -50,7 +50,7 @@ export class EventsSessionRepository {
           capacity: data.capacity,
         },
       });
-    } catch (error: unknown) {
+    } catch {
       throw new ApiError(
         'Failed to create event session',
         'INTERNAL_SERVER_ERROR',
@@ -64,6 +64,11 @@ export class EventsSessionRepository {
         id,
         event: { ownerId },
       },
+      include: {
+        event: {
+          select: { status: true },
+        },
+      },
     });
   }
 
@@ -75,7 +80,10 @@ export class EventsSessionRepository {
     }
 
     const result = await this.prisma.eventSession.updateMany({
-      where: { id: data.id },
+      where: {
+        id: data.id,
+        status: EventSessionStatus.SCHEDULED,
+      },
       data: {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.venueName !== undefined && { venueName: data.venueName }),

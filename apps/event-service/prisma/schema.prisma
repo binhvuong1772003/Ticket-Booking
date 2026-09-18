@@ -19,6 +19,11 @@ enum EventSessionStatus {
   CANCELLED
   COMPLETED
 }
+enum TicketTypeStatus {
+  ACTIVE
+  INACTIVE
+  SOLD_OUT
+}
 
 model Category {
   id String @id @default(auto()) @map("_id") @db.ObjectId
@@ -107,6 +112,8 @@ model EventSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  ticketTypes TicketType[]
+
   @@index([eventId, startsAt])
   @@index([status, startsAt])
   @@map("event_sessions")
@@ -137,4 +144,27 @@ model OutboxEvent {
   @@index([publishedAt, nextAttemptAt, createdAt])
   @@index([aggregateId, aggregateVersion])
   @@map("outbox_events")
+}
+model TicketType {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  sessionId String       @db.ObjectId
+  session   EventSession @relation(fields: [sessionId], references: [id])
+
+  name String
+  code String
+
+  // Lưu tiền theo đơn vị nhỏ nhất, ví dụ VND thì lưu trực tiếp bằng Int.
+  price Int
+
+  quantity Int
+  sold     Int @default(0)
+
+  status TicketTypeStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, code])
+  @@index([sessionId, status])
 }

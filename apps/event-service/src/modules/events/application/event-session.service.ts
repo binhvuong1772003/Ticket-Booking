@@ -1,16 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { EventSessionStatus, EventStatus } from '@prisma/client';
-import { CreateEventInput } from '../presentation/graphql/inputs/create-event.input';
-import { UpdateEventInput } from '../presentation/graphql/inputs/update-event.input';
-import { UpdateEventStatusInput } from '../presentation/graphql/inputs/update-event-status.input';
 import { CreateEventSessionInput } from '../presentation/graphql/inputs/create-event-session.input';
 import { UpdateEventSessionInput } from '../presentation/graphql/inputs/update-event-session.input';
 import { UpdateEventSessionStatusInput } from '../presentation/graphql/inputs/update-event-session-status.input';
-import {
-  CreateEventData,
-  EventsRepository,
-  UpdateEventData,
-} from '../infrastructure/events.repository';
+import { EventsRepository } from '../infrastructure/events.repository';
+import { TicketTypeRepository } from '../infrastructure/ticket-type.repository';
 import {
   CreateEventSessionData,
   EventsSessionRepository,
@@ -18,120 +12,15 @@ import {
 } from '../infrastructure/event-session.repository';
 import { ApiError } from '../../../common/errors/api-error';
 
-const allowedTransitions: Record<EventStatus, EventStatus[]> = {
-  [EventStatus.DRAFT]: [EventStatus.PUBLISHED, EventStatus.CANCELLED],
-  [EventStatus.PUBLISHED]: [EventStatus.CANCELLED, EventStatus.ARCHIVED],
-  [EventStatus.CANCELLED]: [],
-  [EventStatus.ARCHIVED]: [],
-};
-
 @Injectable()
-export class EventsService {
+export class EventSessionService {
   constructor(
     private readonly eventsRepository: EventsRepository,
     private readonly eventsSessionRepository: EventsSessionRepository,
+    private readonly ticketTypeRepository: TicketTypeRepository,
   ) {}
 
-  findPublished() {
-    return this.eventsRepository.findPublished();
-  }
-
-  create(input: CreateEventInput, ownerId: string) {
-    if (!ownerId?.trim()) {
-      throw new ApiError('Authentication is required', 'UNAUTHENTICATED');
-    }
-
-    const data: CreateEventData = {
-      title: input.title,
-      slug: input.slug,
-      summary: input.summary,
-      organizerDisplayName: input.organizerDisplayName,
-      contactEmail: input.contactEmail,
-      contactPhone: input.contactPhone,
-      ownerId,
-    };
-
-    return this.eventsRepository.create(data);
-  }
-
-  update(input: UpdateEventInput, ownerId: string) {
-    if (!ownerId?.trim()) {
-      throw new ApiError('Authentication is required', 'UNAUTHENTICATED');
-    }
-
-    const hasChanges = [
-      input.title,
-      input.slug,
-      input.summary,
-      input.organizerDisplayName,
-      input.contactEmail,
-      input.contactPhone,
-    ].some((value) => value !== undefined);
-
-    if (!hasChanges) {
-      throw new ApiError(
-        'At least one field must be updated',
-        'BAD_USER_INPUT',
-      );
-    }
-
-    const data: UpdateEventData = {
-      id: input.id,
-      title: input.title,
-      slug: input.slug,
-      summary: input.summary,
-      organizerDisplayName: input.organizerDisplayName,
-      contactEmail: input.contactEmail,
-      contactPhone: input.contactPhone,
-      ownerId,
-    };
-
-    return this.eventsRepository.update(data);
-  }
-
-  async updateStatus(input: UpdateEventStatusInput, ownerId: string) {
-    if (!ownerId?.trim()) {
-      throw new ApiError('Authentication is required', 'UNAUTHENTICATED');
-    }
-
-    const event = await this.eventsRepository.findByIdAndOwner(
-      input.id,
-      ownerId,
-    );
-
-    if (!event) {
-      throw new ApiError('Event not found', 'NOT_FOUND');
-    }
-
-    if (event.status === input.status) {
-      throw new ApiError('Event is already in this status', 'BAD_USER_INPUT');
-    }
-
-    if (
-      input.status === EventStatus.CANCELLED &&
-      !input.cancellationReason?.trim()
-    ) {
-      throw new ApiError('Cancellation reason is required', 'BAD_USER_INPUT');
-    }
-
-    const allowed = allowedTransitions[event.status];
-    if (!allowed.includes(input.status)) {
-      throw new ApiError(
-        `Cannot transition from ${event.status} to ${input.status}`,
-        'BAD_USER_INPUT',
-      );
-    }
-
-    return this.eventsRepository.updateStatus(
-      input.id,
-      ownerId,
-      event.status,
-      input.status,
-      input.cancellationReason,
-    );
-  }
-
-  async createEventSession(input: CreateEventSessionInput, ownerId: string) {
+  async create(input: CreateEventSessionInput, ownerId: string) {
     if (!ownerId?.trim()) {
       throw new ApiError('Authentication is required', 'UNAUTHENTICATED');
     }
@@ -188,7 +77,7 @@ export class EventsService {
     return this.eventsSessionRepository.create(data);
   }
 
-  async updateEventSession(input: UpdateEventSessionInput, ownerId: string) {
+  async update(input: UpdateEventSessionInput, ownerId: string) {
     if (!ownerId?.trim()) {
       throw new ApiError('Authentication is required', 'UNAUTHENTICATED');
     }
@@ -200,6 +89,16 @@ export class EventsService {
 
     if (!session) {
       throw new ApiError('Event session not found', 'NOT_FOUND');
+    }
+
+    if (
+      session.event.status === EventStatus.CANCELLED ||
+      session.event.status === EventStatus.ARCHIVED
+    ) {
+      throw new ApiError(
+        'Cannot modify a session of a closed event',
+        'BAD_USER_INPUT',
+      );
     }
 
     if (session.status !== EventSessionStatus.SCHEDULED) {
@@ -246,6 +145,22 @@ export class EventsService {
       );
     }
 
+    if (input.capacity !== undefined && input.capacity !== null) {
+      const allocatedQuantity =
+        await this.ticketTypeRepository.getTotalQuantity(input.id);
+
+      if (allocatedQuantity > input.capacity) {
+        throw new ApiError(
+          'Session capacity cannot be lower than allocated ticket quantity',
+          'BAD_USER_INPUT',
+          {
+            capacity: input.capacity,
+            allocatedQuantity,
+          },
+        );
+      }
+    }
+
     const data: UpdateEventSessionData = {
       id: input.id,
       ownerId,
@@ -263,10 +178,7 @@ export class EventsService {
     return this.eventsSessionRepository.update(data);
   }
 
-  async updateEventSessionStatus(
-    input: UpdateEventSessionStatusInput,
-    ownerId: string,
-  ) {
+  async updateStatus(input: UpdateEventSessionStatusInput, ownerId: string) {
     if (!ownerId?.trim()) {
       throw new ApiError('Authentication is required', 'UNAUTHENTICATED');
     }
@@ -278,6 +190,16 @@ export class EventsService {
 
     if (!session) {
       throw new ApiError('Event session not found', 'NOT_FOUND');
+    }
+
+    if (
+      session.event.status === EventStatus.CANCELLED ||
+      session.event.status === EventStatus.ARCHIVED
+    ) {
+      throw new ApiError(
+        'Cannot modify a session of a closed event',
+        'BAD_USER_INPUT',
+      );
     }
 
     if (session.status === input.status) {

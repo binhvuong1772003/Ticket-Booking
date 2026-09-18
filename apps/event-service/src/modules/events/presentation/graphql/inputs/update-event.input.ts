@@ -1,6 +1,7 @@
 import { Field, InputType } from '@nestjs/graphql';
 import {
   IsEmail,
+  IsMongoId,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -12,8 +13,7 @@ import {
 @InputType()
 export class UpdateEventInput {
   @Field(() => String)
-  @IsString()
-  @IsNotEmpty()
+  @IsMongoId()
   id!: string;
 
   @Field(() => String, { nullable: true })
@@ -26,6 +26,9 @@ export class UpdateEventInput {
   @ValidateIf((_, value) => value !== undefined)
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+    message: 'Slug must contain lowercase letters, numbers and hyphens only',
+  })
   slug?: string;
 
   @Field(() => String, { nullable: true })
