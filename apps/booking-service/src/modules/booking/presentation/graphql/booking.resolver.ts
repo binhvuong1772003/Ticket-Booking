@@ -3,7 +3,7 @@ import { UseGuards } from '@nestjs/common';
 import { BookingService } from '../../application/booking.service';
 import { CreateBookingInput } from './inputs/create-booking.input';
 import { BookingModel } from './models/booking.model';
-import { JwtAuthGuard } from '../../../common/auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../../../../common/auth/jwt-auth.guard';
 
 type GraphQLContext = {
   req: {
