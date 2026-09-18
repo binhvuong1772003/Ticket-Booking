@@ -27,7 +27,13 @@
       "sourceRoot": "apps/auth-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/auth-service/tsconfig.app.json",
-        "deleteOutDir": false
+        "deleteOutDir": false,
+        "assets": [
+          {
+            "include": "generated/**/*",
+            "watchAssets": true
+          }
+        ]
       }
     },
     "booking-service": {
@@ -36,7 +42,39 @@
       "entryFile": "main",
       "sourceRoot": "apps/booking-service/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/booking-service/tsconfig.app.json"
+        "tsConfigPath": "apps/booking-service/tsconfig.app.json",
+        "deleteOutDir": false,
+        "assets": [
+          {
+            "include": "generated/**/*",
+            "watchAssets": true
+          }
+        ]
+      }
+    },
+    "event-service": {
+      "type": "application",
+      "root": "apps/event-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/event-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/event-service/tsconfig.app.json"
+      }
+    },
+    "inventory-service": {
+      "type": "application",
+      "root": "apps/inventory-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/inventory-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/inventory-service/tsconfig.app.json",
+        "deleteOutDir": false,
+        "assets": [
+          {
+            "include": "generated/**/*",
+            "watchAssets": true
+          }
+        ]
       }
     },
     "notification-service": {

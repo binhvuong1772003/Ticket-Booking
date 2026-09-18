@@ -35,6 +35,15 @@
     },
     {
       "path": "./apps/notification-service/tsconfig.app.json"
+    },
+    {
+      "path": "./apps/ticket-booking/tsconfig.app.json"
+    },
+    {
+      "path": "./apps/event-service/tsconfig.app.json"
+    },
+    {
+      "path": "./apps/inventory-service/tsconfig.app.json"
     }
   ]
 }
