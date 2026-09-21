@@ -12,6 +12,8 @@ const authServiceUrl =
   process.env.AUTH_SERVICE_URL ?? 'http://localhost:4001/graphql';
 const eventServiceUrl =
   process.env.EVENT_SERVICE_URL ?? 'http://localhost:4003/graphql';
+const bookingServiceUrl =
+  process.env.BOOKING_SERVICE_URL ?? 'http://localhost:4002/graphql';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 class AuthenticatedDataSource extends RemoteGraphQLDataSource {
@@ -65,6 +67,9 @@ class AuthenticatedDataSource extends RemoteGraphQLDataSource {
           return new AuthenticatedDataSource({ url });
         },
         supergraphSdl: new IntrospectAndCompose({
+          // Subgraphs có thể chưa listen khi gateway boot cùng lúc —
+          // poll để retry thay vì crash
+          pollIntervalInMs: 10_000,
           subgraphs: [
             {
               name: 'auth',
@@ -74,10 +79,10 @@ class AuthenticatedDataSource extends RemoteGraphQLDataSource {
               name: 'events',
               url: eventServiceUrl,
             },
-            // {
-            //   name: 'booking',
-            //   url: 'http://localhost:4002/graphql',
-            // },
+            {
+              name: 'booking',
+              url: bookingServiceUrl,
+            },
           ],
         }),
       },
