@@ -21,6 +21,17 @@ import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
             'libs/contracts/proto/inventory.proto',
           ),
           url: process.env.INVENTORY_GRPC_URL ?? 'localhost:50051',
+          loader: { keepCase: true },
+        },
+      },
+      {
+        name: 'PAYMENT_GRPC',
+        transport: Transport.GRPC,
+        options: {
+          package: 'payment',
+          protoPath: join(process.cwd(), 'libs/contracts/proto/payment.proto'),
+          url: process.env.PAYMENT_GRPC_URL ?? 'localhost:50052',
+          loader: { keepCase: true },
         },
       },
     ]),

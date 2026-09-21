@@ -33,10 +33,10 @@ model Booking {
   status        BookingStatus @default(PENDING)
   paymentStatus PaymentStatus @default(PENDING)
 
-  subtotal       Decimal @db.Decimal128
-  discountAmount Decimal @default(0) @db.Decimal128
-  feeAmount      Decimal @default(0) @db.Decimal128
-  totalAmount    Decimal @db.Decimal128
+  subtotal       Float
+  discountAmount Float      @default(0)
+  feeAmount      Float      @default(0)
+  totalAmount    Float
   currency       String  @default("USD")
 
   paymentId String?
@@ -75,8 +75,8 @@ model BookingItem {
   ticketTypeCode String
 
   quantity  Int
-  unitPrice Decimal @db.Decimal128
-  subtotal  Decimal @db.Decimal128
+  unitPrice Float
+  subtotal  Float
 
   reservationId String?
 

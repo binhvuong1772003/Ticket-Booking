@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '../../../generated/booking-prisma';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 
 export type CreateBookingData = {
@@ -13,6 +12,7 @@ export type CreateBookingData = {
   quantity: number;
   unitPrice: number;
   currency: string;
+  reservationId: string;
   expiresAt: Date;
 };
 
@@ -21,8 +21,8 @@ export class BookingRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async createPending(data: CreateBookingData) {
-    const unitPrice = new Prisma.Decimal(data.unitPrice);
-    const subtotal = unitPrice.mul(data.quantity);
+    const unitPrice = data.unitPrice;
+    const subtotal = unitPrice * data.quantity;
 
     return this.prisma.booking.create({
       data: {
@@ -46,25 +46,7 @@ export class BookingRepository {
             quantity: data.quantity,
             unitPrice,
             subtotal,
-          },
-        },
-      },
-      include: { items: true },
-    });
-  }
-
-  async attachReservation(
-    bookingId: string,
-    ticketTypeId: string,
-    reservationId: string,
-  ) {
-    return this.prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        items: {
-          updateMany: {
-            where: { ticketTypeId },
-            data: { reservationId },
+            reservationId: data.reservationId,
           },
         },
       },

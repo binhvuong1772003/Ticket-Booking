@@ -22,6 +22,10 @@ export interface ReserveResponse {
   success: boolean;
   reservation_id: string;
   message: string;
+  ticket_type_name: string;
+  ticket_type_code: string;
+  unit_price: number;
+  currency: string;
 }
 
 interface ReleaseRequest {
@@ -39,6 +43,38 @@ interface InventoryGrpcService {
   release(input: ReleaseRequest): Observable<ReleaseResponse>;
 }
 
+interface CreateCheckoutRequest {
+  booking_id: string;
+  amount: number;
+  currency: string;
+  organizer_account_id: string;
+  quantity: number;
+  ticket_type_name: string;
+  success_url: string;
+}
+
+interface CreateCheckoutResponse {
+  success: boolean;
+  checkout_session_id: string;
+  client_secret: string;
+  message: string;
+}
+
+interface PaymentGrpcService {
+  createCheckout(
+    input: CreateCheckoutRequest,
+  ): Observable<CreateCheckoutResponse>;
+}
+
+// Tiền zero-decimal: đơn vị nhỏ nhất trùng đơn vị lớn (VND 50000 = 50000)
+const ZERO_DECIMAL_CURRENCIES = new Set(['BIF', 'CLP', 'JPY', 'KRW', 'VND']);
+
+function fromSmallestUnit(amount: number, currency: string): number {
+  return ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase())
+    ? amount
+    : amount / 100;
+}
+
 export type CreateBookingMessage = {
   booking_id: string;
   user_id: string;
@@ -50,16 +86,21 @@ export type CreateBookingMessage = {
 @Injectable()
 export class BookingService implements OnModuleInit {
   private inventoryService!: InventoryGrpcService;
+  private paymentService!: PaymentGrpcService;
 
   constructor(
     @Inject('INVENTORY_GRPC')
     private readonly inventoryClient: ClientGrpc,
+    @Inject('PAYMENT_GRPC')
+    private readonly paymentClient: ClientGrpc,
     private readonly bookingRepository: BookingRepository,
   ) {}
 
   onModuleInit() {
     this.inventoryService =
       this.inventoryClient.getService<InventoryGrpcService>('InventoryService');
+    this.paymentService =
+      this.paymentClient.getService<PaymentGrpcService>('PaymentService');
   }
 
   getHealth() {
@@ -72,25 +113,12 @@ export class BookingService implements OnModuleInit {
     }
 
     const bookingId = randomBytes(12).toString('hex');
-    const booking = await this.bookingRepository.createPending({
-      id: bookingId,
-      userId,
-      eventId: input.eventId,
-      sessionId: input.sessionId,
-      ticketTypeId: input.ticketTypeId,
-      ticketTypeName: input.ticketTypeName,
-      ticketTypeCode: input.ticketTypeCode,
-      quantity: input.quantity,
-      unitPrice: input.unitPrice,
-      currency: input.currency ?? 'USD',
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-    });
-
     let reservationId: string | undefined;
+    let booking: { id: string } | undefined;
 
     try {
       const reservation = await this.reserveInventory({
-        booking_id: booking.id,
+        booking_id: bookingId,
         user_id: userId,
         session_id: input.sessionId,
         ticket_type_id: input.ticketTypeId,
@@ -99,19 +127,41 @@ export class BookingService implements OnModuleInit {
 
       reservationId = reservation.reservation_id;
 
-      return this.bookingRepository.attachReservation(
-        booking.id,
-        input.ticketTypeId,
+      const currency = reservation.currency || 'USD';
+      const unitPrice = fromSmallestUnit(reservation.unit_price, currency);
+
+      booking = await this.bookingRepository.createPending({
+        id: bookingId,
+        userId,
+        eventId: input.eventId,
+        sessionId: input.sessionId,
+        ticketTypeId: input.ticketTypeId,
+        ticketTypeName: reservation.ticket_type_name,
+        ticketTypeCode: reservation.ticket_type_code,
+        quantity: input.quantity,
+        unitPrice,
+        currency,
         reservationId,
-      );
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      });
+
+      const checkoutClientSecret = await this.createCheckout(booking.id, {
+        amount: reservation.unit_price,
+        currency,
+        quantity: input.quantity,
+        ticketTypeName: reservation.ticket_type_name,
+      }).catch(() => undefined);
+
+      return { ...booking, checkoutClientSecret };
     } catch (error) {
       if (reservationId) {
-        await this.releaseInventory(reservationId, booking.id).catch(() => {
+        await this.releaseInventory(reservationId, bookingId).catch(() => {
           // Inventory release can be retried by a later compensation flow.
         });
       }
-
-      await this.bookingRepository.cancel(booking.id);
+      if (booking) {
+        await this.bookingRepository.cancel(booking.id);
+      }
       throw error;
     }
   }
@@ -135,5 +185,27 @@ export class BookingService implements OnModuleInit {
         booking_id: bookingId,
       }),
     );
+  }
+
+  private createCheckout(
+    bookingId: string,
+    ticket: {
+      amount: number;
+      currency: string;
+      quantity: number;
+      ticketTypeName: string;
+    },
+  ) {
+    return firstValueFrom(
+      this.paymentService.createCheckout({
+        booking_id: bookingId,
+        amount: ticket.amount,
+        currency: ticket.currency,
+        organizer_account_id: '',
+        quantity: ticket.quantity,
+        ticket_type_name: ticket.ticketTypeName,
+        success_url: '',
+      }),
+    ).then((res) => res.client_secret);
   }
 }

@@ -93,6 +93,10 @@ export class BookingModel {
   @Field({ nullable: true })
   paymentId?: string;
 
+  // Chỉ có trong response createBooking — không persist
+  @Field({ nullable: true })
+  checkoutClientSecret?: string;
+
   @Field(() => GraphQLISODateTime, { nullable: true })
   expiresAt?: Date;
 
