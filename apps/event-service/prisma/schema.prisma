@@ -155,7 +155,8 @@ model TicketType {
   code String
 
   // Lưu tiền theo đơn vị nhỏ nhất, ví dụ VND thì lưu trực tiếp bằng Int.
-  price Int
+  price    Int
+  currency String @default("USD")
 
   quantity Int
   sold     Int @default(0)

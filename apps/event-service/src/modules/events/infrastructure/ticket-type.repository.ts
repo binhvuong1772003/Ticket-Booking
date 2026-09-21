@@ -8,6 +8,7 @@ export type CreateTicketTypeData = {
   name: string;
   code: string;
   price: number;
+  currency: string;
   quantity: number;
 };
 
@@ -24,6 +25,7 @@ export class TicketTypeRepository {
             name: data.name,
             code: data.code,
             price: data.price,
+            currency: data.currency,
             quantity: data.quantity,
           },
         });
@@ -37,6 +39,10 @@ export class TicketTypeRepository {
             payload: {
               ticketTypeId: ticketType.id,
               sessionId: ticketType.sessionId,
+              name: ticketType.name,
+              code: ticketType.code,
+              price: ticketType.price,
+              currency: ticketType.currency,
               quantity: ticketType.quantity,
             },
           },

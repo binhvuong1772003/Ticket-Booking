@@ -70,6 +70,7 @@ export class TicketTypeService {
       name: input.name,
       code: input.code,
       price: input.price,
+      currency: input.currency ?? 'USD',
       quantity: input.quantity,
     };
 
