@@ -64,7 +64,7 @@ services:
     entrypoint: ['/bin/sh', '-ec']
     command:
       - |
-        for topic in auth.user.registered ticket-type.created; do
+        for topic in auth.user.registered ticket-type.created payment.succeeded payment.expired payment.failed; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic "$$topic" --partitions 1 --replication-factor 1
         done
   api-gateway:
@@ -129,10 +129,13 @@ services:
       NODE_ENV: development
       BOOKING_PORT: 4002
       INVENTORY_GRPC_URL: inventory-service:50051
+      PAYMENT_GRPC_URL: payment-service:50052
     ports:
       - '127.0.0.1:4002:4002'
     depends_on:
       inventory-service:
+        condition: service_healthy
+      payment-service:
         condition: service_healthy
     healthcheck:
       test:
@@ -190,6 +193,33 @@ services:
           'node',
           '-e',
           'const s=require("net").connect(50051,"127.0.0.1");s.on("connect",()=>{s.end();process.exit(0)});s.on("error",()=>process.exit(1))',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+  payment-service:
+    <<: *backend
+    env_file: ./apps/payment-service/.env
+    command: ['node', 'dist/apps/payment-service/main.js']
+    environment:
+      NODE_ENV: development
+      PORT: 3010
+      PAYMENT_GRPC_URL: 0.0.0.0:50052
+      KAFKA_BROKERS: kafka:29092
+    ports:
+      - '127.0.0.1:3010:3010'
+      - '127.0.0.1:50052:50052'
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          'const s=require("net").connect(50052,"127.0.0.1");s.on("connect",()=>{s.end();process.exit(0)});s.on("error",()=>process.exit(1))',
         ]
       interval: 10s
       timeout: 5s
