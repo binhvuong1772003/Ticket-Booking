@@ -3,16 +3,13 @@ import { ClientKafka } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
-import type { UserRole } from '../../../../generated/auth-prisma/enums.js';
+import type { UserRole } from '../../../../generated/auth-prisma/index.js';
 import { db } from '../../../../infrastructure/persistence/prisma.js';
 import { ApiError } from '../../../../common/errors/api-error.js';
 import { TokenService } from './token.service.js';
 import { LoginInput } from '../../presentation/graphql/inputs/login.input.js';
 import { RegisterInput } from '../../presentation/graphql/inputs/register.input.js';
-import {
-  AssignableUserRole,
-  UpdateUserRoleInput,
-} from '../../presentation/graphql/inputs/update-user-role.input.js';
+import { UpdateUserRoleInput } from '../../presentation/graphql/inputs/update-user-role.input.js';
 import { createHash, randomUUID } from 'node:crypto';
 
 @Injectable()
