@@ -17,6 +17,10 @@ export type ReserveInventoryData = {
   bookingId: string;
   userId: string;
 };
+export type ReleaseInventoryData = {
+  reservationId: string;
+  bookingId: string;
+};
 @Injectable()
 export class InventoryRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -95,6 +99,34 @@ export class InventoryRepository {
         },
       });
       return { hold, inventory };
+    });
+  }
+
+  async release(data: ReleaseInventoryData) {
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.inventoryHold.updateMany({
+        where: {
+          id: data.reservationId,
+          bookingId: data.bookingId,
+          status: 'ACTIVE',
+        },
+        data: { status: 'RELEASED', releasedAt: new Date() },
+      });
+      if (result.count !== 1) {
+        return { released: false as const };
+      }
+      const hold = await tx.inventoryHold.findUniqueOrThrow({
+        where: { id: data.reservationId },
+      });
+      await tx.inventory.update({
+        where: { id: hold.inventoryId },
+        data: {
+          available: { increment: hold.quantity },
+          reserved: { decrement: hold.quantity },
+          version: { increment: 1 },
+        },
+      });
+      return { released: true as const, hold };
     });
   }
 }

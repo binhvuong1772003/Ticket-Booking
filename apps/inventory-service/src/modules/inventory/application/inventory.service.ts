@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import {
   InventoryRepository,
+  ReleaseInventoryData,
   ReserveInventoryData,
 } from '../infrastructure/inventory.repository';
 
@@ -31,6 +32,24 @@ export class InventoryService {
     }
 
     return this.inventoryRepository.reserve(data);
+  }
+
+  release(data: ReleaseInventoryData) {
+    if (!data.reservationId?.trim()) {
+      throw new RpcException({
+        code: 3,
+        message: 'reservationId is required',
+      });
+    }
+
+    if (!data.bookingId?.trim()) {
+      throw new RpcException({
+        code: 3,
+        message: 'bookingId is required',
+      });
+    }
+
+    return this.inventoryRepository.release(data);
   }
 
   async createFromTicketTypeCreated(data: {

@@ -40,10 +40,16 @@ export class InventoryController {
   }
 
   @GrpcMethod('InventoryService', 'Release')
-  async release(_input: ReleaseRequest) {
+  async release(input: ReleaseRequest) {
+    const result = await this.inventoryService.release({
+      reservationId: input.reservation_id,
+      bookingId: input.booking_id,
+    });
     return {
       success: true,
-      message: 'Inventory released',
+      message: result.released
+        ? 'Inventory released'
+        : 'Hold not active; nothing to release',
     };
   }
 }
