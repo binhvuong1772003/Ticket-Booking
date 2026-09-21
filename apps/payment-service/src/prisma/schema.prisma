@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/payment-prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentStatus {
+  CREATED
+  SUCCEEDED
+  EXPIRED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id                 String        @id @default(auto()) @map("_id") @db.ObjectId
+
+  bookingId          String
+  checkoutSessionId  String?       @unique
+  paymentIntentId    String?       @unique
+  organizerAccountId String?
+
+  // Đơn vị nhỏ nhất của currency (xu/cent)
+  amount             Int
+  currency           String
+  status             PaymentStatus @default(CREATED)
+
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  succeededAt        DateTime?
+
+  @@index([bookingId])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+model PaymentOutbox {
+  // Message ID để consumer chống xử lý trùng
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+
+  // Stripe event.id — dedup key: Stripe retry cùng event chỉ ghi 1 lần
+  stripeEventId String   @unique
+
+  // Kafka topic: payment.succeeded, payment.expired, payment.failed
+  eventType     String
+
+  payload       Json
+
+  createdAt     DateTime  @default(now())
+  publishedAt   DateTime?
+
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+
+  @@index([publishedAt, nextAttemptAt, createdAt])
+  @@map("payment_outbox")
+}
