@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   OnModuleInit,
 } from '@nestjs/common';
 import { ClientGrpc } from '@nestjs/microservices';
@@ -18,7 +19,7 @@ interface ReserveRequest {
   user_id: string;
 }
 
-export interface ReserveResponse {
+interface ReserveResponse {
   success: boolean;
   reservation_id: string;
   message: string;
@@ -75,7 +76,7 @@ function fromSmallestUnit(amount: number, currency: string): number {
     : amount / 100;
 }
 
-export type CreateBookingMessage = {
+type CreateBookingMessage = {
   booking_id: string;
   user_id: string;
   session_id: string;
@@ -85,6 +86,7 @@ export type CreateBookingMessage = {
 
 @Injectable()
 export class BookingService implements OnModuleInit {
+  private readonly logger = new Logger(BookingService.name);
   private inventoryService!: InventoryGrpcService;
   private paymentService!: PaymentGrpcService;
 
@@ -150,23 +152,36 @@ export class BookingService implements OnModuleInit {
         currency,
         quantity: input.quantity,
         ticketTypeName: reservation.ticket_type_name,
-      }).catch(() => undefined);
+      });
 
       return { ...booking, checkoutClientSecret };
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`createBooking ${bookingId} failed: ${message}`);
       if (reservationId) {
-        await this.releaseInventory(reservationId, bookingId).catch(() => {
-          // Inventory release can be retried by a later compensation flow.
-        });
+        await this.releaseInventory(reservationId, bookingId).catch(
+          (releaseError: unknown) => {
+            const releaseMessage =
+              releaseError instanceof Error
+                ? releaseError.message
+                : String(releaseError);
+            this.logger.error(
+              `releaseInventory ${reservationId} for booking ${bookingId} failed: ${releaseMessage}`,
+            );
+          },
+        );
       }
       if (booking) {
-        await this.bookingRepository.cancel(booking.id);
+        await this.bookingRepository.cancel(
+          booking.id,
+          'Payment checkout failed',
+        );
       }
       throw error;
     }
   }
 
-  reserveInventory(input: CreateBookingMessage) {
+  private reserveInventory(input: CreateBookingMessage) {
     return firstValueFrom(
       this.inventoryService.reserve({
         session_id: input.session_id,

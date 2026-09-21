@@ -140,15 +140,16 @@ describe('BookingService.create', () => {
     });
   });
 
-  it('still returns the booking when payment fails', async () => {
+  it('compensates when payment checkout fails', async () => {
     createCheckout.mockReturnValue(throwError(() => new Error('stripe down')));
 
-    const result = await service.create(input(), 'user-1');
-
-    expect(result).toEqual(
-      expect.objectContaining({ id: 'bk1', checkoutClientSecret: undefined }),
+    await expect(service.create(input(), 'user-1')).rejects.toThrow(
+      'stripe down',
     );
-    expect(release).not.toHaveBeenCalled();
-    expect(cancel).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledWith({
+      reservation_id: 'res-1',
+      booking_id: expect.any(String),
+    });
+    expect(cancel).toHaveBeenCalledWith('bk1', 'Payment checkout failed');
   });
 });

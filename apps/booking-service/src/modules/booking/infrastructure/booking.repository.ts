@@ -54,13 +54,13 @@ export class BookingRepository {
     });
   }
 
-  cancel(bookingId: string) {
+  cancel(bookingId: string, reason: string) {
     return this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         status: 'CANCELLED',
         cancelledAt: new Date(),
-        cancellationReason: 'Inventory reservation failed',
+        cancellationReason: reason,
         version: { increment: 1 },
       },
       include: { items: true },
