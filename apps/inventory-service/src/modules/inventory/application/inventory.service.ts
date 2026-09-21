@@ -35,6 +35,10 @@ export class InventoryService {
 
   async createFromTicketTypeCreated(data: {
     ticketTypeId: string;
+    name: string;
+    code: string;
+    price: number;
+    currency: string;
     total: number;
   }) {
     const { ticketTypeId, total } = data;
@@ -58,6 +62,10 @@ export class InventoryService {
 
     return this.inventoryRepository.create({
       ticketTypeId,
+      name: data.name,
+      code: data.code,
+      price: data.price,
+      currency: data.currency,
       total,
     });
   }

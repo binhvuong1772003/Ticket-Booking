@@ -11,6 +11,9 @@ async function bootstrap() {
       package: 'inventory',
       protoPath: join(process.cwd(), 'libs/contracts/proto/inventory.proto'),
       url: '0.0.0.0:50051',
+      // proto-loader mặc định camelCase hoá field name — giữ snake_case
+      // để khớp handler code
+      loader: { keepCase: true },
     },
   });
   app.connectMicroservice<MicroserviceOptions>({

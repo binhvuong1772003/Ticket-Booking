@@ -21,7 +21,7 @@ export class InventoryController {
 
   @GrpcMethod('InventoryService', 'Reserve')
   async reserve(input: ReserveRequest) {
-    const hold = await this.inventoryService.reserve({
+    const { hold, inventory } = await this.inventoryService.reserve({
       ticketTypeId: input.ticket_type_id,
       quantity: input.quantity,
       bookingId: input.booking_id,
@@ -32,6 +32,10 @@ export class InventoryController {
       success: true,
       reservation_id: hold.id,
       message: 'Inventory reserved',
+      ticket_type_name: inventory.name ?? '',
+      ticket_type_code: inventory.code ?? '',
+      unit_price: inventory.price ?? 0,
+      currency: inventory.currency ?? '',
     };
   }
 

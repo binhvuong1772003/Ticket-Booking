@@ -21,6 +21,13 @@ model Inventory {
   // Không tạo FK cross-service
   ticketTypeId String   @unique
 
+  // Snapshot từ ticket-type.created — booking lấy giá từ đây,
+  // client không được tự khai giá
+  name     String?
+  code     String?
+  price    Int?
+  currency String?
+
   total        Int
   available Int
   reserved     Int      @default(0)

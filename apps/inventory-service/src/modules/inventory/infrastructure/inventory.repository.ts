@@ -5,6 +5,10 @@ import { RpcException } from '@nestjs/microservices';
 
 export type CreateInventoryData = {
   ticketTypeId: string;
+  name?: string;
+  code?: string;
+  price?: number;
+  currency?: string;
   total: number;
 };
 export type ReserveInventoryData = {
@@ -22,6 +26,10 @@ export class InventoryRepository {
       return await this.prisma.inventory.create({
         data: {
           ticketTypeId: data.ticketTypeId,
+          name: data.name,
+          code: data.code,
+          price: data.price,
+          currency: data.currency,
           total: data.total,
           available: data.total,
         },
@@ -76,7 +84,7 @@ export class InventoryRepository {
           ticketTypeId: data.ticketTypeId,
         },
       });
-      return tx.inventoryHold.create({
+      const hold = await tx.inventoryHold.create({
         data: {
           inventoryId: inventory.id,
           bookingId: data.bookingId,
@@ -86,6 +94,7 @@ export class InventoryRepository {
           expiresAt: new Date(Date.now() + 10 * 60 * 1000),
         },
       });
+      return { hold, inventory };
     });
   }
 }
