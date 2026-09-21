@@ -1,0 +1,234 @@
+enum AssignableUserRole {
+  USER
+  ORGANIZER
+}
+
+type AuthTokensPayload {
+  accessToken: String!
+}
+
+type Booking {
+  id: ID!
+  userId: ID!
+  eventId: ID!
+  sessionId: ID!
+  status: BookingStatus!
+  paymentStatus: PaymentStatus!
+  subtotal: Float!
+  discountAmount: Float!
+  feeAmount: Float!
+  totalAmount: Float!
+  currency: String!
+  paymentId: String
+  expiresAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  items: [BookingItem!]!
+}
+
+type BookingItem {
+  id: ID!
+  bookingId: ID!
+  ticketTypeId: ID!
+  ticketTypeName: String!
+  ticketTypeCode: String!
+  quantity: Int!
+  unitPrice: Float!
+  subtotal: Float!
+  reservationId: String
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+input CreateBookingInput {
+  eventId: ID!
+  sessionId: ID!
+  ticketTypeId: ID!
+  ticketTypeName: String!
+  ticketTypeCode: String!
+  quantity: Int!
+  unitPrice: Float!
+  currency: String = "USD"
+}
+
+input CreateEventInput {
+  title: String!
+  slug: String!
+  summary: String
+  organizerDisplayName: String
+  contactEmail: String
+  contactPhone: String
+}
+
+input CreateEventSessionInput {
+  eventId: ID!
+  name: String
+  venueName: String
+  venueAddress: String
+  city: String
+  countryCode: String
+  startsAt: DateTime
+  endsAt: DateTime
+  timezone: String
+  capacity: Float
+}
+
+input CreateTicketTypeInput {
+  sessionId: ID!
+  name: String!
+  code: String!
+  price: Int!
+  quantity: Int!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type EventModel {
+  id: ID!
+  title: String!
+  slug: String!
+  summary: String
+  organizerDisplayName: String
+  contactEmail: String
+  contactPhone: String
+  status: String!
+}
+
+type EventSession {
+  id: ID!
+  eventId: ID!
+  name: String
+  venueName: String
+  venueAddress: String
+  city: String
+  countryCode: String
+  startsAt: DateTime
+  endsAt: DateTime
+  timezone: String!
+  capacity: Int
+  status: EventSessionStatus!
+  cancelledAt: DateTime
+  cancellationReason: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum EventSessionStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  ARCHIVED
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type Mutation {
+  register(input: RegisterInput!): AuthTokensPayload!
+  login(input: LoginInput!): AuthTokensPayload!
+  refreshAccessToken: AuthTokensPayload!
+  logout: Boolean!
+  updateUserRole(input: UpdateUserRoleInput!): Boolean!
+  verifyEmail(token: String!): Boolean!
+  resendVerificationEmail(email: String!): Boolean!
+  createBooking(input: CreateBookingInput!): Booking!
+  createEvent(input: CreateEventInput!): EventModel!
+  updateEvent(input: UpdateEventInput!): EventModel!
+  updateEventStatus(input: UpdateEventStatusInput!): EventModel!
+  createEventSession(input: CreateEventSessionInput!): EventSession!
+  updateEventSession(input: UpdateEventSessionInput!): EventSession!
+  updateEventSessionStatus(input: UpdateEventSessionStatusInput!): EventSession!
+  createTicketType(input: CreateTicketTypeInput!): TicketType!
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+type Query {
+  health: String!
+  events: [EventModel!]!
+}
+
+input RegisterInput {
+  email: String!
+  password: String!
+}
+
+type TicketType {
+  id: ID!
+  sessionId: ID!
+  name: String!
+  code: String!
+  price: Int!
+  quantity: Int!
+  sold: Int!
+  status: TicketTypeStatus!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum TicketTypeStatus {
+  ACTIVE
+  INACTIVE
+  SOLD_OUT
+}
+
+input UpdateEventInput {
+  id: String!
+  title: String
+  slug: String
+  summary: String
+  organizerDisplayName: String
+  contactEmail: String
+  contactPhone: String
+}
+
+input UpdateEventSessionInput {
+  id: ID!
+  name: String
+  venueName: String
+  venueAddress: String
+  city: String
+  countryCode: String
+  startsAt: DateTime
+  endsAt: DateTime
+  timezone: String
+  capacity: Float
+}
+
+input UpdateEventSessionStatusInput {
+  id: ID!
+  status: EventSessionStatus!
+  cancellationReason: String
+}
+
+input UpdateEventStatusInput {
+  id: ID!
+  status: EventStatus!
+  cancellationReason: String
+}
+
+input UpdateUserRoleInput {
+  userId: ID!
+  role: AssignableUserRole!
+}
