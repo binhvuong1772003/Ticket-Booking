@@ -77,10 +77,13 @@ services:
       AUTH_SERVICE_URL: http://auth-service:4001/graphql
       AUTH_SERVICE_BASE_URL: http://auth-service:4001
       EVENT_SERVICE_URL: http://event-service:4003/graphql
+      BOOKING_SERVICE_URL: http://booking-service:4002/graphql
     ports:
       - '127.0.0.1:3000:3000'
     depends_on:
       auth-service:
+        condition: service_healthy
+      booking-service:
         condition: service_healthy
       event-service:
         condition: service_healthy
