@@ -37,7 +37,9 @@ export class EventsResolver {
     return this.eventService.findPublished();
   }
 
-  @UseGuards(JwtAuthGuard, OrganizerGuard)
+  /* Any signed-in user may create an event — ownership is enforced via
+     ownerId on update/status mutations, which keep OrganizerGuard. */
+  @UseGuards(JwtAuthGuard)
   @Mutation(() => EventModel)
   createEvent(
     @Args('input') input: CreateEventInput,
