@@ -232,6 +232,25 @@ export class AuthService {
     ]);
   }
 
+  async me(userId: string) {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        avatarUrl: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      throw new ApiError('User not found', { code: 'NOT_FOUND' });
+    }
+
+    return user;
+  }
+
   async updateProfile(userId: string, input: UpdateProfileInput) {
     try {
       return await db.user.update({

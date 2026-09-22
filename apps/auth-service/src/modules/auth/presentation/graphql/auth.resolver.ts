@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import { ApiError } from '../../../../common/errors/api-error.js';
 import { AuthService } from '../../application/services/auth.service.js';
 import { AuthTokensPayload } from './models/auth-tokens.payload.js';
+import { UserProfile } from './models/user-profile.model.js';
 import { LoginInput } from './inputs/login.input.js';
 import { RegisterInput } from './inputs/register.input.js';
 import { UpdateUserRoleInput } from './inputs/update-user-role.input.js';
@@ -67,6 +68,12 @@ export class AuthResolver {
   @Query(() => String)
   health(): string {
     return 'auth-service is healthy';
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Query(() => UserProfile)
+  async me(@Context() context: GraphQLContext) {
+    return this.authService.me(context.req.user!.sub);
   }
 
   @Mutation(() => AuthTokensPayload)
