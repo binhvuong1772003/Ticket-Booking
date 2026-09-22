@@ -12,7 +12,7 @@ export class TokenService {
   async issueTokens(userId: string, meta?: TokenMeta): Promise<AuthTokens> {
     const user = await db.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true },
+      select: { id: true, email: true, role: true },
     });
     if (!user) {
       throw new ApiError('User not found', {
@@ -22,6 +22,7 @@ export class TokenService {
     }
     const accessToken = this.jwtService.sign({
       sub: user.id,
+      email: user.email,
       role: user.role as UserRole,
     });
     const refreshToken = randomBytes(48).toString('base64url');
@@ -81,7 +82,7 @@ export class TokenService {
 
     const user = await db.user.findUnique({
       where: { id: storedToken.userId },
-      select: { id: true, role: true },
+      select: { id: true, email: true, role: true },
     });
 
     if (!user) {
@@ -124,6 +125,7 @@ export class TokenService {
 
     const accessToken = this.jwtService.sign({
       sub: user.id,
+      email: user.email,
       role: user.role as UserRole,
     });
 
