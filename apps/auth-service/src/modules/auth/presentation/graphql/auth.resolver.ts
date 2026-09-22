@@ -7,13 +7,17 @@ import { AuthTokensPayload } from './models/auth-tokens.payload.js';
 import { LoginInput } from './inputs/login.input.js';
 import { RegisterInput } from './inputs/register.input.js';
 import { UpdateUserRoleInput } from './inputs/update-user-role.input.js';
+import { ChangePasswordInput } from './inputs/change-password.input.js';
+import { UpdateProfileInput } from './inputs/update-profile.input.js';
+import { UpdateUserStatusInput } from './inputs/update-user-status.input.js';
 import { AdminGuard } from './guards/admin.guard.js';
+import { AuthUser, JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 const REFRESH_TOKEN_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 
 type GraphQLContext = {
-  req: Request;
+  req: Request & { user?: AuthUser };
   res: Response;
 };
 
@@ -119,6 +123,38 @@ export class AuthResolver {
     input: UpdateUserRoleInput,
   ) {
     await this.authService.updateUserRole(input);
+    return true;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Mutation(() => Boolean)
+  async changePassword(
+    @Args('input', { type: () => ChangePasswordInput })
+    input: ChangePasswordInput,
+    @Context() context: GraphQLContext,
+  ) {
+    await this.authService.changePassword(context.req.user!.sub, input);
+    return true;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Mutation(() => Boolean)
+  async updateProfile(
+    @Args('input', { type: () => UpdateProfileInput })
+    input: UpdateProfileInput,
+    @Context() context: GraphQLContext,
+  ) {
+    await this.authService.updateProfile(context.req.user!.sub, input);
+    return true;
+  }
+
+  @UseGuards(AdminGuard)
+  @Mutation(() => Boolean)
+  async updateUserStatus(
+    @Args('input', { type: () => UpdateUserStatusInput })
+    input: UpdateUserStatusInput,
+  ) {
+    await this.authService.updateUserStatus(input);
     return true;
   }
 
