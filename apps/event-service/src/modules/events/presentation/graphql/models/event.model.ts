@@ -23,6 +23,9 @@ export class EventModel {
   @Field({ nullable: true })
   contactPhone?: string;
 
+  @Field({ nullable: true })
+  coverImageUrl?: string;
+
   @Field()
   status!: string;
 }
