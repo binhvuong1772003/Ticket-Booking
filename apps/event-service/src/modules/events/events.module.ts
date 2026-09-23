@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../infrastructure/prisma/prisma.module';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../common/auth/optional-jwt-auth.guard';
 import { OrganizerGuard } from '../../common/auth/organizer.guard';
 import { EventsResolver } from './presentation/graphql/events.resolver';
 import { EventService } from './application/event.service';
@@ -40,6 +41,7 @@ import { OutboxProcessor } from './infrastructure/outbox.processor';
     EventsSessionRepository,
     TicketTypeRepository,
     JwtAuthGuard,
+    OptionalJwtAuthGuard,
     OrganizerGuard,
     OutboxProcessor,
   ],

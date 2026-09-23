@@ -1,4 +1,5 @@
-import { Field, ID, ObjectType } from '@nestjs/graphql';
+import { Field, GraphQLISODateTime, ID, ObjectType } from '@nestjs/graphql';
+import { EventSessionModel } from './event-session.model';
 
 @ObjectType()
 export class EventModel {
@@ -15,6 +16,9 @@ export class EventModel {
   summary?: string;
 
   @Field({ nullable: true })
+  description?: string;
+
+  @Field({ nullable: true })
   organizerDisplayName?: string;
 
   @Field({ nullable: true })
@@ -28,4 +32,25 @@ export class EventModel {
 
   @Field()
   status!: string;
+
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  publishedAt?: Date;
+
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  cancelledAt?: Date;
+
+  @Field({ nullable: true })
+  cancellationReason?: string;
+
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  archivedAt?: Date;
+
+  @Field(() => GraphQLISODateTime)
+  createdAt!: Date;
+
+  @Field(() => GraphQLISODateTime)
+  updatedAt!: Date;
+
+  @Field(() => [EventSessionModel], { nullable: true })
+  sessions?: EventSessionModel[];
 }

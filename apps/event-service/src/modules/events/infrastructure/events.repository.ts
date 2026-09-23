@@ -11,6 +11,7 @@ export type CreateEventData = {
   organizerDisplayName?: string;
   contactEmail?: string;
   contactPhone?: string;
+  coverImageUrl?: string;
 };
 export type UpdateEventData = {
   ownerId: string;
@@ -21,6 +22,7 @@ export type UpdateEventData = {
   organizerDisplayName?: string | null;
   contactEmail?: string | null;
   contactPhone?: string | null;
+  coverImageUrl?: string | null;
 };
 
 @Injectable()
@@ -31,6 +33,25 @@ export class EventsRepository {
     return this.prisma.event.findMany({
       where: { status: 'PUBLISHED' },
       orderBy: { publishedAt: 'desc' },
+    });
+  }
+
+  findByOwner(ownerId: string) {
+    return this.prisma.event.findMany({
+      where: { ownerId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findById(id: string) {
+    return this.prisma.event.findUnique({
+      where: { id },
+      include: {
+        sessions: {
+          orderBy: { startsAt: 'asc' },
+          include: { ticketTypes: true },
+        },
+      },
     });
   }
 
@@ -45,6 +66,7 @@ export class EventsRepository {
           organizerDisplayName: data.organizerDisplayName,
           contactEmail: data.contactEmail,
           contactPhone: data.contactPhone,
+          coverImageUrl: data.coverImageUrl,
           status: 'DRAFT',
         },
       });
@@ -80,6 +102,9 @@ export class EventsRepository {
           }),
           ...(data.contactPhone !== undefined && {
             contactPhone: data.contactPhone,
+          }),
+          ...(data.coverImageUrl !== undefined && {
+            coverImageUrl: data.coverImageUrl,
           }),
           version: {
             increment: 1,

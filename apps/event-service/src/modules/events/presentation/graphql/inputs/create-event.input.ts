@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   Matches,
   MaxLength,
 } from 'class-validator';
@@ -48,4 +49,16 @@ export class CreateEventInput {
     message: 'Invalid phone number',
   })
   contactPhone?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsUrl(
+    { protocols: ['http', 'https'], require_protocol: true },
+    { message: 'Cover image URL không hợp lệ' },
+  )
+  @Matches(/^https:\/\/res\.cloudinary\.com\//, {
+    message: 'Cover image URL phải là Cloudinary URL',
+  })
+  @MaxLength(2048)
+  coverImageUrl?: string;
 }

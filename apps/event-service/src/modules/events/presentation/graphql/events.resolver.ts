@@ -1,7 +1,7 @@
 import { UseGuards } from '@nestjs/common';
-import { Args, Context, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Context, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { JwtAuthGuard } from '../../../../common/auth/jwt-auth.guard';
-import { OrganizerGuard } from '../../../../common/auth/organizer.guard';
+import { OptionalJwtAuthGuard } from '../../../../common/auth/optional-jwt-auth.guard';
 import { EventService } from '../../application/event.service';
 import { EventSessionService } from '../../application/event-session.service';
 import { TicketTypeService } from '../../application/ticket-type.service';
@@ -18,8 +18,9 @@ import { EventModel } from './models/event.model';
 
 type GraphQLContext = {
   req: {
-    user: {
+    user?: {
       sub: string;
+      role?: string;
     };
   };
 };
@@ -37,68 +38,84 @@ export class EventsResolver {
     return this.eventService.findPublished();
   }
 
-  /* Any signed-in user may create an event — ownership is enforced via
-     ownerId on update/status mutations, which keep OrganizerGuard. */
+  @UseGuards(JwtAuthGuard)
+  @Query(() => [EventModel])
+  myEvents(@Context() context: GraphQLContext) {
+    return this.eventService.findByOwner(context.req.user!.sub);
+  }
+
+  @UseGuards(OptionalJwtAuthGuard)
+  @Query(() => EventModel)
+  event(
+    @Args('id', { type: () => ID }) id: string,
+    @Context() context: GraphQLContext,
+  ) {
+    return this.eventService.findById(id, context.req.user);
+  }
+
+  /* Any signed-in user may create an event; update/status mutations enforce
+     ownership via ownerId in the service layer (organizer role not yet
+     implemented). */
   @UseGuards(JwtAuthGuard)
   @Mutation(() => EventModel)
   createEvent(
     @Args('input') input: CreateEventInput,
     @Context() context: GraphQLContext,
   ) {
-    return this.eventService.create(input, context.req.user.sub);
+    return this.eventService.create(input, context.req.user!.sub);
   }
 
-  @UseGuards(JwtAuthGuard, OrganizerGuard)
+  @UseGuards(JwtAuthGuard)
   @Mutation(() => EventModel)
   updateEvent(
     @Args('input') input: UpdateEventInput,
     @Context() context: GraphQLContext,
   ) {
-    return this.eventService.update(input, context.req.user.sub);
+    return this.eventService.update(input, context.req.user!.sub);
   }
 
-  @UseGuards(JwtAuthGuard, OrganizerGuard)
+  @UseGuards(JwtAuthGuard)
   @Mutation(() => EventModel)
   updateEventStatus(
     @Args('input') input: UpdateEventStatusInput,
     @Context() context: GraphQLContext,
   ) {
-    return this.eventService.updateStatus(input, context.req.user.sub);
+    return this.eventService.updateStatus(input, context.req.user!.sub);
   }
 
-  @UseGuards(JwtAuthGuard, OrganizerGuard)
+  @UseGuards(JwtAuthGuard)
   @Mutation(() => EventSessionModel)
   createEventSession(
     @Args('input') input: CreateEventSessionInput,
     @Context() context: GraphQLContext,
   ) {
-    return this.eventSessionService.create(input, context.req.user.sub);
+    return this.eventSessionService.create(input, context.req.user!.sub);
   }
 
-  @UseGuards(JwtAuthGuard, OrganizerGuard)
+  @UseGuards(JwtAuthGuard)
   @Mutation(() => EventSessionModel)
   updateEventSession(
     @Args('input') input: UpdateEventSessionInput,
     @Context() context: GraphQLContext,
   ) {
-    return this.eventSessionService.update(input, context.req.user.sub);
+    return this.eventSessionService.update(input, context.req.user!.sub);
   }
 
-  @UseGuards(JwtAuthGuard, OrganizerGuard)
+  @UseGuards(JwtAuthGuard)
   @Mutation(() => EventSessionModel)
   updateEventSessionStatus(
     @Args('input') input: UpdateEventSessionStatusInput,
     @Context() context: GraphQLContext,
   ) {
-    return this.eventSessionService.updateStatus(input, context.req.user.sub);
+    return this.eventSessionService.updateStatus(input, context.req.user!.sub);
   }
 
-  @UseGuards(JwtAuthGuard, OrganizerGuard)
+  @UseGuards(JwtAuthGuard)
   @Mutation(() => TicketTypeModel)
   createTicketType(
     @Args('input') input: CreateTicketTypeInput,
     @Context() context: GraphQLContext,
   ) {
-    return this.ticketTypeService.create(input, context.req.user.sub);
+    return this.ticketTypeService.create(input, context.req.user!.sub);
   }
 }

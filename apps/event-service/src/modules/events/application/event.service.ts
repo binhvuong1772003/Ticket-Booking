@@ -25,6 +25,35 @@ export class EventService {
     return this.eventsRepository.findPublished();
   }
 
+  findByOwner(ownerId: string) {
+    if (!ownerId?.trim()) {
+      throw new ApiError('Authentication is required', 'UNAUTHENTICATED');
+    }
+    return this.eventsRepository.findByOwner(ownerId);
+  }
+
+  async findById(id: string, viewer?: { sub: string; role?: string }) {
+    if (!/^[0-9a-f]{24}$/i.test(id)) {
+      throw new ApiError('Event not found', 'NOT_FOUND');
+    }
+
+    const event = await this.eventsRepository.findById(id);
+    if (!event) {
+      throw new ApiError('Event not found', 'NOT_FOUND');
+    }
+
+    const canView =
+      event.status === EventStatus.PUBLISHED ||
+      event.ownerId === viewer?.sub ||
+      viewer?.role === 'ADMIN';
+
+    if (!canView) {
+      throw new ApiError('Event not found', 'NOT_FOUND');
+    }
+
+    return event;
+  }
+
   create(input: CreateEventInput, ownerId: string) {
     if (!ownerId?.trim()) {
       throw new ApiError('Authentication is required', 'UNAUTHENTICATED');
@@ -37,6 +66,7 @@ export class EventService {
       organizerDisplayName: input.organizerDisplayName,
       contactEmail: input.contactEmail,
       contactPhone: input.contactPhone,
+      coverImageUrl: input.coverImageUrl,
       ownerId,
     };
 
@@ -55,6 +85,7 @@ export class EventService {
       input.organizerDisplayName,
       input.contactEmail,
       input.contactPhone,
+      input.coverImageUrl,
     ].some((value) => value !== undefined);
 
     if (!hasChanges) {
@@ -72,6 +103,7 @@ export class EventService {
       organizerDisplayName: input.organizerDisplayName,
       contactEmail: input.contactEmail,
       contactPhone: input.contactPhone,
+      coverImageUrl: input.coverImageUrl,
       ownerId,
     };
 

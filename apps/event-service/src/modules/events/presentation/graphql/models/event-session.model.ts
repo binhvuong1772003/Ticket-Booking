@@ -7,6 +7,7 @@ import {
   registerEnumType,
 } from '@nestjs/graphql';
 import { EventSessionStatus } from '@prisma/client';
+import { TicketTypeModel } from './ticket-type.model';
 
 registerEnumType(EventSessionStatus, {
   name: 'EventSessionStatus',
@@ -61,4 +62,7 @@ export class EventSessionModel {
 
   @Field(() => GraphQLISODateTime)
   updatedAt!: Date;
+
+  @Field(() => [TicketTypeModel], { nullable: true })
+  ticketTypes?: TicketTypeModel[];
 }
