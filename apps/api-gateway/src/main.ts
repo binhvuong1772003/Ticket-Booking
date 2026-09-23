@@ -75,7 +75,13 @@ async function startApp() {
     });
   }
   app.use('/graphql', jwtMiddleware);
-  await app.listen(port);
+  app.use('/uploads', jwtMiddleware);
+  const server = await app.listen(port);
+  /* Default 5s keep-alive drops idle sockets too fast for Docker Desktop's
+     ~200ms connect on Windows — every pause costs a new handshake through
+     docker-proxy. 60s keeps dev connections warm between interactions. */
+  server.keepAliveTimeout = 60_000;
+  server.headersTimeout = 61_000;
   logger.log(`Gateway listening on http://localhost:${port}/graphql`);
   if (!observeEnabled) {
     logger.log(
