@@ -5,6 +5,8 @@ package inventory;
 service InventoryService {
   rpc Reserve (ReserveRequest) returns (ReserveResponse);
   rpc Release (ReleaseRequest) returns (ReleaseResponse);
+  rpc Confirm (ConfirmRequest) returns (ConfirmResponse);
+  rpc Revoke (RevokeRequest) returns (RevokeResponse);
 }
 
 message ReserveRequest {
@@ -32,6 +34,28 @@ message ReleaseRequest {
 }
 
 message ReleaseResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ConfirmRequest {
+  string reservation_id = 1;
+  string booking_id = 2;
+}
+
+message ConfirmResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Revoke = trả vé ĐÃ BÁN (hold CONFIRMED) về kho sau khi refund xong.
+// Khác Release: Release chỉ đụng hold ACTIVE (chưa thanh toán).
+message RevokeRequest {
+  string reservation_id = 1;
+  string booking_id = 2;
+}
+
+message RevokeResponse {
   bool success = 1;
   string message = 2;
 }

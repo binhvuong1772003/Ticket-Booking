@@ -19,6 +19,7 @@ enum PaymentStatus {
   PENDING
   PAID
   FAILED
+  REFUNDING
   REFUNDED
 }
 
@@ -88,4 +89,17 @@ model BookingItem {
   @@index([ticketTypeId])
   @@index([reservationId])
   @@map("booking_items")
+}
+
+// Projection eventId → organizerId từ event.published — phục vụ
+// ownership check local cho các query đọc booking của organizer,
+// không cần gọi sync sang event-service.
+model EventCatalog {
+  eventId     String @id @map("_id")
+  organizerId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("event_catalogs")
 }

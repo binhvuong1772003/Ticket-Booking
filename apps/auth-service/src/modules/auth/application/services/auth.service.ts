@@ -251,6 +251,21 @@ export class AuthService {
     return user;
   }
 
+  // Lookup tối thiểu cho service-to-service (notification resolve email khi
+  // gửi thông báo refund). Không JWT — trust internal network như gRPC ports.
+  async userContact(userId: string) {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, fullName: true },
+    });
+
+    if (!user) {
+      throw new ApiError('User not found', { code: 'NOT_FOUND' });
+    }
+
+    return user;
+  }
+
   async updateProfile(userId: string, input: UpdateProfileInput) {
     try {
       return await db.user.update({

@@ -34,9 +34,7 @@ describe('InventoryRepository.release', () => {
 
   it('restores inventory when the hold is still active', async () => {
     const { prisma, tx } = makePrisma(1);
-    const repo = new InventoryRepository(
-      prisma as unknown as PrismaService,
-    );
+    const repo = new InventoryRepository(prisma as unknown as PrismaService);
 
     const result = await repo.release({
       reservationId: 'res-1',
@@ -60,9 +58,7 @@ describe('InventoryRepository.release', () => {
 
   it('does not touch inventory when the hold is not active', async () => {
     const { prisma, tx } = makePrisma(0);
-    const repo = new InventoryRepository(
-      prisma as unknown as PrismaService,
-    );
+    const repo = new InventoryRepository(prisma as unknown as PrismaService);
 
     const result = await repo.release({
       reservationId: 'res-1',

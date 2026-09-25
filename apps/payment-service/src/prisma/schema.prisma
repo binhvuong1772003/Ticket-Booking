@@ -20,8 +20,11 @@ model Payment {
   id                 String        @id @default(auto()) @map("_id") @db.ObjectId
 
   bookingId          String
+  // UUID từ auth-service — ai trả tiền (để event refund mang user_id).
+  userId             String?
   checkoutSessionId  String?       @unique
   paymentIntentId    String?       @unique
+  stripeRefundId     String?       @unique
   organizerAccountId String?
 
   // Đơn vị nhỏ nhất của currency (xu/cent)
@@ -32,9 +35,13 @@ model Payment {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   succeededAt        DateTime?
+  refundedAt         DateTime?
+  // Intent refund: ghi trước khi gọi Stripe — worker/backstop đọc field này.
+  refundRequestedAt  DateTime?
 
   @@index([bookingId])
   @@index([status, createdAt])
+  @@index([status, refundRequestedAt])
   @@map("payments")
 }
 

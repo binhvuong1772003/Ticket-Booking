@@ -21,4 +21,24 @@ export class EmailTemplate {
       </p>
     `;
   }
+
+  refunded(
+    customerName: string,
+    bookingId: string,
+    amount?: number | null,
+    currency?: string | null,
+  ): string {
+    const amountText =
+      amount != null && currency ? `${amount} ${currency.toUpperCase()}` : '';
+    return `
+      <h1>Refund issued</h1>
+
+      <p>Hello ${customerName}</p>
+
+      <p>
+        Your booking ${bookingId} has been refunded${amountText ? ` — ${amountText}` : ''}.
+        The amount will return to your original payment method.
+      </p>
+    `;
+  }
 }

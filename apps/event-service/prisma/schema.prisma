@@ -15,6 +15,7 @@ enum EventStatus {
 }
 
 enum EventSessionStatus {
+  DRAFT
   SCHEDULED
   CANCELLED
   COMPLETED
@@ -104,7 +105,7 @@ model EventSession {
   // Sức chứa của suất diễn; không phải tồn vé.
   capacity Int?
 
-  status EventSessionStatus @default(SCHEDULED)
+  status EventSessionStatus @default(DRAFT)
 
   cancelledAt        DateTime?
   cancellationReason String?

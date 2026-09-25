@@ -20,6 +20,7 @@ model Inventory {
   // ID logic từ Event Service
   // Không tạo FK cross-service
   ticketTypeId String   @unique
+  sessionId    String?
 
   // Snapshot từ ticket-type.created — booking lấy giá từ đây,
   // client không được tự khai giá
@@ -27,6 +28,12 @@ model Inventory {
   code     String?
   price    Int?
   currency String?
+
+  // Cổng bán: reserve() yêu cầu cả hai — sessionActive bật khi session
+  // SCHEDULED (session.status.changed), typeActive tắt khi organizer ẩn
+  // hạng vé (ticket-type.updated/deleted).
+  sessionActive Boolean @default(false)
+  typeActive    Boolean @default(true)
 
   total        Int
   available Int
@@ -74,4 +81,18 @@ model InventoryHold {
   @@index([status, expiresAt])
 
   @@map("inventory_holds")
+}
+
+// Projection trạng thái session — chống race khi session.status.changed
+// đến trước ticket-type.created (khác topic Kafka, không có ordering
+// liên-topic): created handler tra catalog thay vì tin payload.
+model SessionCatalog {
+  sessionId String @id @map("_id")
+
+  status String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("session_catalogs")
 }

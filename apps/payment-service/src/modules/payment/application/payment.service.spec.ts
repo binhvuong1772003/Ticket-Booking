@@ -6,6 +6,7 @@ import { PaymentService } from './payment.service';
 import { StripeService } from './stripe.service';
 import { PaymentRepository } from '../infrastructure/payment.repository';
 import { OutboxProcessor } from '../infrastructure/outbox.processor';
+import { RefundQueue } from '../infrastructure/refund.queue';
 
 const event = (overrides: Partial<Stripe.Event> = {}): Stripe.Event =>
   ({
@@ -28,6 +29,7 @@ describe('PaymentService.processStripeEvent', () => {
   const findByStripeRef = vi.fn();
   const recordWebhookEvent = vi.fn();
   const wake = vi.fn();
+  const enqueue = vi.fn();
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -40,6 +42,7 @@ describe('PaymentService.processStripeEvent', () => {
           useValue: { findByStripeRef, recordWebhookEvent },
         },
         { provide: OutboxProcessor, useValue: { wake } },
+        { provide: RefundQueue, useValue: { enqueue } },
       ],
     }).compile();
 
@@ -109,5 +112,93 @@ describe('PaymentService.processStripeEvent', () => {
 
     expect(result).toEqual({ received: true, duplicate: true });
     expect(wake).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentService.refund', () => {
+  let service: PaymentService;
+  const findByStripeRef = vi.fn();
+  const requestRefund = vi.fn();
+  const enqueue = vi.fn();
+
+  const payment = {
+    id: 'pay-1',
+    bookingId: 'booking-1',
+    paymentIntentId: 'pi_123',
+    status: 'SUCCEEDED',
+    stripeRefundId: null,
+  };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    findByStripeRef.mockResolvedValue(payment);
+    requestRefund.mockResolvedValue({ count: 1 });
+    enqueue.mockResolvedValue(undefined);
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PaymentService,
+        { provide: StripeService, useValue: {} },
+        {
+          provide: PaymentRepository,
+          useValue: { findByStripeRef, requestRefund },
+        },
+        { provide: OutboxProcessor, useValue: {} },
+        { provide: RefundQueue, useValue: { enqueue } },
+      ],
+    }).compile();
+
+    service = module.get(PaymentService);
+  });
+
+  it('records intent and enqueues job for a succeeded payment', async () => {
+    const result = await service.refund({ bookingId: 'booking-1' });
+
+    expect(result).toEqual({
+      accepted: true,
+      refunded: false,
+      refundId: '',
+    });
+    expect(requestRefund).toHaveBeenCalledWith('pay-1');
+    expect(enqueue).toHaveBeenCalledWith('pay-1');
+  });
+
+  it('still accepts when enqueue fails (backstop re-enqueues)', async () => {
+    enqueue.mockRejectedValue(new Error('redis down'));
+
+    const result = await service.refund({ bookingId: 'booking-1' });
+
+    expect(result.accepted).toBe(true);
+  });
+
+  it('returns refunded for an already-refunded payment', async () => {
+    findByStripeRef.mockResolvedValue({
+      ...payment,
+      status: 'REFUNDED',
+      stripeRefundId: 're_1',
+    });
+
+    const result = await service.refund({ bookingId: 'booking-1' });
+
+    expect(result).toEqual({
+      accepted: true,
+      refunded: true,
+      refundId: 're_1',
+    });
+    expect(requestRefund).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('rejects refund for a non-succeeded payment', async () => {
+    findByStripeRef.mockResolvedValue({ ...payment, status: 'CREATED' });
+
+    await expect(service.refund({ bookingId: 'booking-1' })).rejects.toThrow();
+    expect(requestRefund).not.toHaveBeenCalled();
+  });
+
+  it('rejects when no payment/payment intent exists', async () => {
+    findByStripeRef.mockResolvedValue(null);
+
+    await expect(service.refund({ bookingId: 'booking-1' })).rejects.toThrow();
   });
 });

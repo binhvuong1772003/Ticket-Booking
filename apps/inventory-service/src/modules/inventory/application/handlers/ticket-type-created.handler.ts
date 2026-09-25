@@ -8,6 +8,7 @@ export type TicketTypeCreatedEvent = {
   payload: {
     ticketTypeId: string;
     sessionId: string;
+    sessionStatus?: string;
     name: string;
     code: string;
     price: number;
@@ -23,6 +24,7 @@ export class TicketTypeCreatedHandler {
   handle(event: TicketTypeCreatedEvent) {
     return this.inventoryService.createFromTicketTypeCreated({
       ticketTypeId: event.payload.ticketTypeId,
+      sessionId: event.payload.sessionId,
       name: event.payload.name,
       code: event.payload.code,
       price: event.payload.price,

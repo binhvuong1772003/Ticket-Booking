@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 
 export type CreateCheckoutInput = {
   bookingId: string;
+  userId?: string;
   amount: number;
   currency: string;
   organizerAccountId: string;
@@ -67,6 +68,23 @@ export class StripeService {
           error instanceof Error
             ? `Stripe checkout failed: ${error.message}`
             : 'Stripe checkout failed',
+      });
+    }
+  }
+
+  async refund(paymentIntentId: string, idempotencyKey: string) {
+    try {
+      return await this.stripe.refunds.create(
+        { payment_intent: paymentIntentId },
+        { idempotencyKey },
+      );
+    } catch (error) {
+      throw new RpcException({
+        code: 13,
+        message:
+          error instanceof Error
+            ? `Stripe refund failed: ${error.message}`
+            : 'Stripe refund failed',
       });
     }
   }

@@ -3,7 +3,9 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { join } from 'node:path';
 import { BookingService } from './application/booking.service.js';
 import { BookingResolver } from './presentation/graphql/booking.resolver';
+import { BookingController } from './presentation/messaging/booking.controller';
 import { BookingRepository } from './infrastructure/booking.repository';
+import { BookingSweeper } from './infrastructure/booking.sweeper';
 import { PrismaModule } from '../../infrastructure/prisma/prisma.module';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
 
@@ -36,6 +38,13 @@ import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard';
       },
     ]),
   ],
-  providers: [BookingResolver, BookingService, BookingRepository, JwtAuthGuard],
+  controllers: [BookingController],
+  providers: [
+    BookingResolver,
+    BookingService,
+    BookingRepository,
+    BookingSweeper,
+    JwtAuthGuard,
+  ],
 })
 export class BookingModule {}

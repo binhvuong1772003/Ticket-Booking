@@ -2,6 +2,7 @@ import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { EmailTemplate } from './email.template';
 import { SmtpProvider } from './email.provider';
+import { AuthClient } from '../auth/auth.client';
 
 type VerificationEmailJob = {
   to: string;
@@ -9,26 +10,51 @@ type VerificationEmailJob = {
   eventId: string;
 };
 
+type RefundEmailJob = {
+  bookingId: string;
+  userId: string;
+  amount: number | null;
+  currency: string | null;
+};
+
 @Processor('email')
 export class EmailProcessor extends WorkerHost {
   constructor(
     private readonly smtpProvider: SmtpProvider,
     private readonly emailTemplate: EmailTemplate,
+    private readonly authClient: AuthClient,
   ) {
     super();
   }
-  async process(job: Job<VerificationEmailJob>) {
-    if (job.name !== 'verification-email') {
+  async process(job: Job<VerificationEmailJob | RefundEmailJob>) {
+    if (job.name === 'verification-email') {
+      const data = job.data as VerificationEmailJob;
+      const verifyURL = `${process.env.FRONTEND_URL}/email/verify?token=${data.verificationToken}`;
+      const html = this.emailTemplate.verification(data.to, verifyURL);
+      await this.smtpProvider.sendEmail(
+        data.to,
+        'Welcome to our platform',
+        html,
+      );
       return;
     }
-    const verifyURL = `${process.env.FRONTEND_URL}/email/verify?token=${job.data.verificationToken}`;
-    const html = this.emailTemplate.verification(job.data.to, verifyURL);
 
-    await this.smtpProvider.sendEmail(
-      job.data.to,
-      'Welcome to our platform',
-      html,
-    );
+    if (job.name === 'refund-email') {
+      const data = job.data as RefundEmailJob;
+      const contact = await this.authClient.getUserContact(data.userId);
+      const html = this.emailTemplate.refunded(
+        contact.fullName ?? contact.email,
+        data.bookingId,
+        data.amount,
+        data.currency,
+      );
+      await this.smtpProvider.sendEmail(
+        contact.email,
+        'Your refund has been issued',
+        html,
+      );
+      return;
+    }
   }
   @OnWorkerEvent('failed')
   onFailed(job: Job | undefined, error: Error) {

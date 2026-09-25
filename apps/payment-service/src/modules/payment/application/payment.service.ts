@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { RpcException } from '@nestjs/microservices';
 import type Stripe from 'stripe';
 import { Prisma } from '../../../generated/payment-prisma';
 import { PaymentRepository } from '../infrastructure/payment.repository';
 import { OutboxProcessor } from '../infrastructure/outbox.processor';
+import { RefundQueue } from '../infrastructure/refund.queue';
 import { CreateCheckoutInput, StripeService } from './stripe.service';
 
 const EVENT_TOPIC: Record<string, string> = {
@@ -25,12 +27,14 @@ export class PaymentService {
     private readonly stripeService: StripeService,
     private readonly repository: PaymentRepository,
     private readonly outbox: OutboxProcessor,
+    private readonly refundQueue: RefundQueue,
   ) {}
 
   async createCheckout(input: CreateCheckoutInput) {
     const session = await this.stripeService.createCheckout(input);
     await this.repository.create({
       bookingId: input.bookingId,
+      userId: input.userId,
       checkoutSessionId: session.id,
       organizerAccountId: input.organizerAccountId || undefined,
       amount: input.amount * input.quantity,
@@ -105,5 +109,45 @@ export class PaymentService {
 
     this.outbox.wake();
     return { received: true };
+  }
+
+  /**
+   * Ghi intent refund (durable) + enqueue job; Stripe refund thực thi async
+   * ở RefundProcessor. Trả accepted ngay để caller không chờ Stripe.
+   */
+  async refund(input: { bookingId: string; reason?: string }) {
+    const payment = await this.repository.findByStripeRef({
+      bookingId: input.bookingId,
+    });
+    if (!payment?.paymentIntentId) {
+      throw new RpcException({
+        code: 5,
+        message: 'Payment not found or has no payment intent',
+      });
+    }
+    if (payment.status === 'REFUNDED') {
+      return {
+        accepted: true,
+        refunded: true,
+        refundId: payment.stripeRefundId ?? '',
+      };
+    }
+    if (payment.status !== 'SUCCEEDED') {
+      throw new RpcException({
+        code: 9,
+        message: `Cannot refund payment in status ${payment.status}`,
+      });
+    }
+
+    await this.repository.requestRefund(payment.id);
+    try {
+      await this.refundQueue.enqueue(payment.id);
+    } catch (error) {
+      // Intent đã durable — RefundQueue sweep sẽ re-enqueue; vẫn báo accepted.
+      this.logger.error(
+        `Enqueue refund for payment ${payment.id} failed: ${String(error)}`,
+      );
+    }
+    return { accepted: true, refunded: false, refundId: '' };
   }
 }

@@ -4,6 +4,7 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloGatewayDriver, ApolloGatewayDriverConfig } from '@nestjs/apollo';
 import { IntrospectAndCompose, RemoteGraphQLDataSource } from '@apollo/gateway';
 import { GoogleOAuthController } from './modules/oauth/google-oauth.controller.js';
+import { UploadsController } from './modules/uploads/uploads.controller.js';
 
 const observeAppKey = process.env.OBSERVE_APP_KEY?.trim();
 const observeAppSecret = process.env.OBSERVE_APP_SECRET?.trim();
@@ -88,7 +89,7 @@ class AuthenticatedDataSource extends RemoteGraphQLDataSource {
       },
     }),
   ],
-  controllers: [GoogleOAuthController],
+  controllers: [GoogleOAuthController, UploadsController],
 })
 export class AppModule {}
 

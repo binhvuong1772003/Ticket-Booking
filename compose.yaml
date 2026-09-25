@@ -9,6 +9,20 @@ x-backend: &backend
     - 'host.docker.internal:host-gateway'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - '127.0.0.1:5433:5432'
+    environment:
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: auth
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d auth']
+      interval: 5s
+      timeout: 3s
+      retries: 20
   redis:
     image: redis:7.4.2-alpine
     ports:
@@ -64,7 +78,7 @@ services:
     entrypoint: ['/bin/sh', '-ec']
     command:
       - |
-        for topic in auth.user.registered ticket-type.created payment.succeeded payment.expired payment.failed; do
+        for topic in auth.user.registered ticket-type.created ticket-type.updated ticket-type.deleted session.status.changed session.rescheduled payment.succeeded payment.expired payment.failed payment.refunded booking.refund.requested event.cancelled event.published; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic "$$topic" --partitions 1 --replication-factor 1
         done
   api-gateway:
@@ -107,6 +121,9 @@ services:
       NODE_ENV: development
       AUTH_PORT: 4001
       KAFKA_BROKER: kafka:29092
+      # Uncomment to run auth against the local postgres container instead
+      # of the Supabase DATABASE_URL from env_file (env var wins).
+      # DATABASE_URL: postgresql://postgres:dev@postgres:5432/auth
     ports:
       - '127.0.0.1:4001:4001'
     depends_on:
@@ -133,9 +150,12 @@ services:
       BOOKING_PORT: 4002
       INVENTORY_GRPC_URL: inventory-service:50051
       PAYMENT_GRPC_URL: payment-service:50052
+      KAFKA_BROKERS: kafka:29092
     ports:
       - '127.0.0.1:4002:4002'
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
       inventory-service:
         condition: service_healthy
       payment-service:
@@ -210,12 +230,16 @@ services:
       PORT: 3010
       PAYMENT_GRPC_URL: 0.0.0.0:50052
       KAFKA_BROKERS: kafka:29092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     ports:
       - '127.0.0.1:3010:3010'
       - '127.0.0.1:50052:50052'
     depends_on:
       kafka-init:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -237,11 +261,13 @@ services:
       KAFKA_BROKERS: kafka:29092
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      AUTH_SERVICE_URL: http://auth-service:4001/graphql
     depends_on:
       kafka-init:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
 volumes:
+  postgres-data:
   redis-data:
   kafka-data:

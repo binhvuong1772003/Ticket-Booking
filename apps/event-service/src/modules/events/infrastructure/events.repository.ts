@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { ApiError } from '../../../common/errors/api-error';
-import { Prisma, EventStatus } from '@prisma/client';
+import { Prisma, EventSessionStatus, EventStatus } from '@prisma/client';
 
 export type CreateEventData = {
   ownerId: string;
@@ -36,10 +36,18 @@ export class EventsRepository {
     });
   }
 
+  /* Sessions+ticketTypes included so the organizer dashboard can derive
+     sold/revenue without one query per event. */
   findByOwner(ownerId: string) {
     return this.prisma.event.findMany({
       where: { ownerId },
       orderBy: { createdAt: 'desc' },
+      include: {
+        sessions: {
+          orderBy: { startsAt: 'asc' },
+          include: { ticketTypes: true },
+        },
+      },
     });
   }
 
@@ -138,6 +146,7 @@ export class EventsRepository {
     fromStatus: EventStatus,
     toStatus: EventStatus,
     cancellationReason?: string | null,
+    version?: number,
   ) {
     const now = new Date();
     const data: Prisma.EventUpdateManyMutationInput = {
@@ -160,18 +169,90 @@ export class EventsRepository {
         }
         break;
     }
-    const result = await this.prisma.event.updateMany({
-      where: {
-        id,
-        ownerId,
-        status: fromStatus,
-      },
-      data,
-    });
+    await this.prisma.$transaction(async (tx) => {
+      const result = await tx.event.updateMany({
+        where: {
+          id,
+          ownerId,
+          status: fromStatus,
+        },
+        data,
+      });
 
-    if (result.count !== 1) {
-      throw new ApiError('Event state changed or event not found', 'CONFLICT');
-    }
+      if (result.count !== 1) {
+        throw new ApiError(
+          'Event state changed or event not found',
+          'CONFLICT',
+        );
+      }
+
+      if (toStatus === EventStatus.PUBLISHED) {
+        // booking-service nghe event này để dựng EventCatalog projection
+        // (eventId → organizerId) phục vụ ownership check cho các query
+        // đọc booking của organizer.
+        await tx.outboxEvent.create({
+          data: {
+            aggregateId: id,
+            eventType: 'event.published',
+            aggregateVersion: (version ?? 0) + 1,
+            payload: {
+              event_id: id,
+              organizer_id: ownerId,
+            },
+          },
+        });
+      }
+
+      if (toStatus === EventStatus.CANCELLED) {
+        // Cascade session → CANCELLED và emit session.status.changed cho
+        // từng session — inventory-service nghe event này để tắt
+        // sessionActive, chặn bán vé trên event đã hủy.
+        const sessions = await tx.eventSession.findMany({
+          where: { eventId: id, status: { not: EventSessionStatus.CANCELLED } },
+          select: { id: true },
+        });
+        await tx.eventSession.updateMany({
+          where: {
+            eventId: id,
+            status: { not: EventStatus.CANCELLED },
+          },
+          data: {
+            status: EventStatus.CANCELLED,
+            cancelledAt: now,
+            ...(cancellationReason && { cancellationReason }),
+          },
+        });
+        for (const session of sessions) {
+          await tx.outboxEvent.create({
+            data: {
+              aggregateId: session.id,
+              eventType: 'session.status.changed',
+              aggregateVersion: 1,
+              schemaVersion: 1,
+              payload: {
+                sessionId: session.id,
+                eventId: id,
+                status: EventSessionStatus.CANCELLED,
+              },
+            },
+          });
+        }
+
+        // Fact 'event.cancelled' trong cùng tx: booking-service cascade —
+        // booking PENDING → cancel+release hold, CONFIRMED+PAID → refund.
+        await tx.outboxEvent.create({
+          data: {
+            aggregateId: id,
+            eventType: 'event.cancelled',
+            aggregateVersion: (version ?? 0) + 1,
+            payload: {
+              event_id: id,
+              reason: cancellationReason ?? null,
+            },
+          },
+        });
+      }
+    });
 
     return this.prisma.event.findUniqueOrThrow({
       where: { id },
@@ -182,6 +263,30 @@ export class EventsRepository {
       where: {
         id,
         ownerId,
+      },
+    });
+  }
+
+  // Outbox cho lệnh refund do organizer chủ động — booking-service consume
+  // 'booking.refund.requested' và verify booking.eventId khớp event_id.
+  emitRefundRequest(input: {
+    eventId: string;
+    aggregateVersion: number;
+    bookingId: string;
+    reason?: string;
+    requestedBy: string;
+  }) {
+    return this.prisma.outboxEvent.create({
+      data: {
+        aggregateId: input.eventId,
+        eventType: 'booking.refund.requested',
+        aggregateVersion: input.aggregateVersion,
+        payload: {
+          booking_id: input.bookingId,
+          event_id: input.eventId,
+          reason: input.reason ?? null,
+          requested_by: input.requestedBy,
+        },
       },
     });
   }

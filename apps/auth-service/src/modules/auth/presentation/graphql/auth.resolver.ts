@@ -5,6 +5,7 @@ import { ApiError } from '../../../../common/errors/api-error.js';
 import { AuthService } from '../../application/services/auth.service.js';
 import { AuthTokensPayload } from './models/auth-tokens.payload.js';
 import { UserProfile } from './models/user-profile.model.js';
+import { UserContact } from './models/user-contact.model.js';
 import { LoginInput } from './inputs/login.input.js';
 import { RegisterInput } from './inputs/register.input.js';
 import { UpdateUserRoleInput } from './inputs/update-user-role.input.js';
@@ -74,6 +75,14 @@ export class AuthResolver {
   @Query(() => UserProfile)
   async me(@Context() context: GraphQLContext) {
     return this.authService.me(context.req.user!.sub);
+  }
+
+  /* Tra cứu nội bộ cho service-to-service (notification-service resolve
+     userId → email để gửi mail refund). Không JWT — internal network,
+     cùng mức trust với gRPC ports; chỉ trả {id, email, fullName}. */
+  @Query(() => UserContact)
+  async userContact(@Args('id', { type: () => String }) id: string) {
+    return this.authService.userContact(id);
   }
 
   @Mutation(() => AuthTokensPayload)

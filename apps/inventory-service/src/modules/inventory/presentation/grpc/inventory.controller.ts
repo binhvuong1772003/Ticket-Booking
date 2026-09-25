@@ -15,6 +15,16 @@ type ReleaseRequest = {
   booking_id: string;
 };
 
+type ConfirmRequest = {
+  reservation_id: string;
+  booking_id: string;
+};
+
+type RevokeRequest = {
+  reservation_id: string;
+  booking_id: string;
+};
+
 @Controller()
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
@@ -50,6 +60,30 @@ export class InventoryController {
       message: result.released
         ? 'Inventory released'
         : 'Hold not active; nothing to release',
+    };
+  }
+
+  @GrpcMethod('InventoryService', 'Confirm')
+  async confirm(input: ConfirmRequest) {
+    const result = await this.inventoryService.confirm({
+      reservationId: input.reservation_id,
+      bookingId: input.booking_id,
+    });
+    return {
+      success: result.confirmed,
+      message: result.confirmed ? 'Hold confirmed' : 'Hold not active',
+    };
+  }
+
+  @GrpcMethod('InventoryService', 'Revoke')
+  async revoke(input: RevokeRequest) {
+    const result = await this.inventoryService.revoke({
+      reservationId: input.reservation_id,
+      bookingId: input.booking_id,
+    });
+    return {
+      success: result.revoked,
+      message: result.revoked ? 'Sold hold revoked' : 'Hold not confirmed',
     };
   }
 }
