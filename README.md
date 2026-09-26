@@ -1,5 +1,74 @@
 # Ticket Booking — NestJS monorepo
 
+## Hẹn giờ mở bán vé
+
+Khi tạo loại vé, truyền `salesStartAt` dạng chuỗi ISO 8601 có múi giờ.
+Ví dụ mở lúc **07:00 ngày 01/10/2026 giờ Việt Nam**:
+
+```graphql
+mutation {
+  createTicketType(input: {
+    sessionId: "<session-id>"
+    name: "VIP"
+    code: "VIP"
+    price: 500000
+    currency: "VND"
+    quantity: 100
+    salesStartAt: "2026-10-01T07:00:00+07:00"
+  }) {
+    id
+    salesStartAt
+  }
+}
+```
+
+Input là String có ngày/giờ/giây và `Z` hoặc offset; output là DateTime UTC
+(ở ví dụ trên: `2026-10-01T00:00:00.000Z`). Trước giờ mở bán, inventory
+chặn ngay trong transaction giữ vé; GraphQL trả
+`extensions.code = TICKET_SALES_NOT_STARTED`. Không tạo hold, booking hay
+checkout khi bị chặn. Từ đúng giờ đó, vé vẫn phải còn tồn kho, session mở bán
+và loại vé ACTIVE. Không cần cron đổi trạng thái; server cần đồng bộ đồng hồ.
+
+Bỏ trống hoặc truyền null giữ hành vi cũ. Lịch trong quá khứ hợp lệ.
+Chủ sự kiện có thể sửa lịch bằng `updateTicketType` khi session còn DRAFT:
+
+```graphql
+mutation {
+  updateTicketType(input: {
+    id: "<ticket-type-id>"
+    salesStartAt: "2026-10-02T07:00:00+07:00"
+  }) { id salesStartAt }
+}
+```
+
+Truyền `salesStartAt: null` để bỏ lịch; bỏ qua field thì giữ lịch hiện tại.
+Mỗi loại vé có lịch riêng; dùng cùng timestamp để mở bán đồng loạt.
+Mutation ghi lịch và outbox trong cùng transaction. Inventory nhận lịch mới
+bất đồng bộ qua Kafka, nên response update xác nhận đã lưu ở event-service,
+không phải inventory đã áp dụng ngay. Chỉ công bố mở bán sau khi dữ liệu đã đồng bộ.
+`salesScheduleVersion` tăng khi sửa/bỏ lịch; inventory bỏ qua phiên bản lịch cũ
+hoặc trùng. Event update kèm snapshot để tạo tồn kho nếu update đến trước create.
+
+Triển khai toàn bộ inventory-service mới trước, booking-service kế tiếp,
+rồi mới bật event-service/API nhận lịch. Không hạ inventory về bản bỏ qua
+lịch khi vẫn đang nhận booking cho vé hẹn giờ. Schema nullable không yêu cầu
+backfill; generate Prisma clients khi build theo quy trình dự án. Không cần
+chạy db push trên database đang hoạt động chỉ để thêm field MongoDB này.
+
+Chạy kiểm thử:
+
+```powershell
+bun run test
+# Opt-in: chỉ dùng MongoDB replica set test riêng; không dùng DATABASE_URL thật.
+$env:SCHEDULED_SALES_TEST_DATABASE_URL = 'mongodb://127.0.0.1:27127/scheduled_sales_test?replicaSet=rs0&directConnection=true'
+bun run test apps/inventory-service/test/scheduled-sales.integration.spec.ts
+```
+
+Test MongoDB bỏ qua khi không có biến riêng này. Gateway test dùng resolver,
+JWT và federation thật với DB/gRPC/payment doubles; MongoDB test kiểm tra
+repository thật, thời điểm mở bán, missing/null và nhiều request tranh vé cuối.
+Đây là hai lớp kiểm thử tích hợp, chưa phải toàn luồng Kafka/gRPC/payment thật.
+
 ## Bun workspaces
 
 `package.json` gốc khai báo `"workspaces": ["apps/*"]`. Mỗi app có một
