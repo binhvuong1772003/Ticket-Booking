@@ -123,6 +123,32 @@ describe('BookingService.create', () => {
     );
   });
 
+  it('returns a stable GraphQL error without booking or checkout before sales open', async () => {
+    reserve.mockReturnValue(
+      throwError(() =>
+        Object.assign(
+          new Error('9 FAILED_PRECONDITION: Ticket sales have not started'),
+          { code: 9, details: 'Ticket sales have not started' },
+        ),
+      ),
+    );
+    await expect(service.create(input(), 'u1')).rejects.toMatchObject({
+      extensions: { code: 'TICKET_SALES_NOT_STARTED' },
+    });
+    expect(createPending).not.toHaveBeenCalled();
+    expect(createCheckout).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it('preserves unrelated inventory errors', async () => {
+    const error = Object.assign(new Error('Ticket type is not on sale'), {
+      code: 9,
+      details: 'Ticket type is not on sale',
+    });
+    reserve.mockReturnValue(throwError(() => error));
+    await expect(service.create(input(), 'u1')).rejects.toBe(error);
+  });
+
   it('does not create a booking when reservation fails', async () => {
     reserve.mockReturnValue(throwError(() => new Error('sold out')));
 

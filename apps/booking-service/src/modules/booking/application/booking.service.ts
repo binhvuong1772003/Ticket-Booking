@@ -9,6 +9,7 @@ import {
 import { ClientGrpc } from '@nestjs/microservices';
 import { firstValueFrom, Observable } from 'rxjs';
 import { randomBytes } from 'node:crypto';
+import { GraphQLError } from 'graphql';
 import { CreateBookingInput } from '../presentation/graphql/inputs/create-booking.input';
 import { BookingRepository } from '../infrastructure/booking.repository';
 
@@ -251,7 +252,22 @@ export class BookingService implements OnModuleInit {
         booking_id: input.booking_id,
         user_id: input.user_id,
       }),
-    );
+    ).catch((error: unknown) => {
+      // ponytail: match the existing gRPC details; use structured reasons if more business errors need mapping.
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 9 &&
+        'details' in error &&
+        error.details === 'Ticket sales have not started'
+      ) {
+        throw new GraphQLError('Ticket sales have not started', {
+          extensions: { code: 'TICKET_SALES_NOT_STARTED' },
+        });
+      }
+      throw error;
+    });
   }
 
   private releaseInventory(reservationId: string, bookingId: string) {
