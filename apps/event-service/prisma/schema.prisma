@@ -162,6 +162,10 @@ model TicketType {
   quantity Int
   sold     Int @default(0)
 
+  // Null preserves immediate sales eligibility. Version orders schedule events.
+  salesStartAt DateTime?
+  salesScheduleVersion Int @default(0)
+
   status TicketTypeStatus @default(ACTIVE)
 
   createdAt DateTime @default(now())

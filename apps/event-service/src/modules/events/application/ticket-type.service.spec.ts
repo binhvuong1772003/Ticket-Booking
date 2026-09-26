@@ -73,6 +73,50 @@ describe('TicketTypeService', () => {
     service = module.get(TicketTypeService);
   });
 
+  it('preserves the opening time when creating a ticket type', async () => {
+    findSessionByIdAndOwner.mockResolvedValue(draftSession);
+    const salesStartAt = '2026-10-01T07:00:00+07:00';
+    await service.create(
+      {
+        sessionId: 's1',
+        name: 'VIP',
+        code: 'VIP',
+        price: 100,
+        quantity: 1,
+        salesStartAt,
+      },
+      'u1',
+    );
+    expect(createWithOutbox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        salesStartAt: new Date('2026-10-01T00:00:00.000Z'),
+      }),
+    );
+  });
+
+  it.each(['2026-10-02T07:00:00+07:00', null])(
+    'updates or clears the opening time %s',
+    async (salesStartAt) => {
+      findTicketTypeByIdAndOwner.mockResolvedValue(ticketType);
+      await service.update({ id: 'tt1', salesStartAt }, 'u1');
+      expect(updateWithOutbox).toHaveBeenCalledWith('tt1', {
+        salesStartAt:
+          salesStartAt === null ? null : new Date('2026-10-02T00:00:00Z'),
+      });
+    },
+  );
+
+  it('rejects schedule edits after the session is scheduled', async () => {
+    findTicketTypeByIdAndOwner.mockResolvedValue({
+      ...ticketType,
+      session: { ...ticketType.session, status: 'SCHEDULED' },
+    });
+    await expect(
+      service.update({ id: 'tt1', salesStartAt: null }, 'u1'),
+    ).rejects.toThrow('draft');
+    expect(updateWithOutbox).not.toHaveBeenCalled();
+  });
+
   it('creates ticket type on draft session', async () => {
     findSessionByIdAndOwner.mockResolvedValue(draftSession);
     const result = await service.create(

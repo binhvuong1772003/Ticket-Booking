@@ -11,6 +11,7 @@ export type CreateTicketTypeData = {
   price: number;
   currency: string;
   quantity: number;
+  salesStartAt?: Date | null;
 };
 
 // Chỉ field nào đổi mới có mặt trong payload ticket-type.updated.
@@ -21,6 +22,7 @@ export type UpdateTicketTypeData = {
   currency?: string;
   quantity?: number;
   status?: TicketTypeStatus;
+  salesStartAt?: Date | null;
 };
 
 @Injectable()
@@ -38,6 +40,7 @@ export class TicketTypeRepository {
             price: data.price,
             currency: data.currency,
             quantity: data.quantity,
+            salesStartAt: data.salesStartAt ?? null,
           },
         });
 
@@ -56,6 +59,8 @@ export class TicketTypeRepository {
               price: ticketType.price,
               currency: ticketType.currency,
               quantity: ticketType.quantity,
+              salesStartAt: ticketType.salesStartAt?.toISOString() ?? null,
+              salesScheduleVersion: ticketType.salesScheduleVersion ?? 0,
             },
           },
         });
@@ -113,9 +118,22 @@ export class TicketTypeRepository {
   async updateWithOutbox(id: string, data: UpdateTicketTypeData) {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const scheduleChanged = data.salesStartAt !== undefined;
+        // Read + write in the transaction also supports legacy Mongo documents
+        // without this field; concurrent changes conflict instead of losing a revision.
+        const current = scheduleChanged
+          ? await tx.ticketType.findUniqueOrThrow({ where: { id } })
+          : null;
         const ticketType = await tx.ticketType.update({
           where: { id },
-          data,
+          data: {
+            ...data,
+            ...(current
+              ? {
+                  salesScheduleVersion: (current.salesScheduleVersion ?? 0) + 1,
+                }
+              : {}),
+          },
         });
 
         await tx.outboxEvent.create({
@@ -128,6 +146,23 @@ export class TicketTypeRepository {
               ticketTypeId: ticketType.id,
               sessionId: ticketType.sessionId,
               ...data,
+              ...(scheduleChanged
+                ? {
+                    salesStartAt:
+                      ticketType.salesStartAt?.toISOString() ?? null,
+                    salesScheduleVersion: ticketType.salesScheduleVersion,
+                    // Allows inventory to initialize even if update beats create across topics.
+                    inventorySnapshot: {
+                      sessionId: ticketType.sessionId,
+                      name: ticketType.name,
+                      code: ticketType.code,
+                      price: ticketType.price,
+                      currency: ticketType.currency,
+                      quantity: ticketType.quantity,
+                      status: ticketType.status,
+                    },
+                  }
+                : {}),
             },
           },
         });

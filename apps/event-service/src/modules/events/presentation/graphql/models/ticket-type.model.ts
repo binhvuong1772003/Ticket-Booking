@@ -35,6 +35,9 @@ export class TicketTypeModel {
   @Field(() => Int)
   sold!: number;
 
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  salesStartAt?: Date | null;
+
   @Field(() => TicketTypeStatus)
   status!: TicketTypeStatus;
 

@@ -1,4 +1,4 @@
-import { Field, ID, InputType, Int } from '@nestjs/graphql';
+import { Field, ID, InputType, Int, PickType } from '@nestjs/graphql';
 import {
   IsInt,
   IsMongoId,
@@ -10,8 +10,12 @@ import {
   Min,
 } from 'class-validator';
 
+import { CreateTicketTypeInput } from './create-ticket-type.input';
+
 @InputType()
-export class UpdateTicketTypeInput {
+export class UpdateTicketTypeInput extends PickType(CreateTicketTypeInput, [
+  'salesStartAt',
+] as const) {
   @Field(() => ID)
   @IsMongoId()
   id!: string;

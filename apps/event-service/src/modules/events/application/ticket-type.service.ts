@@ -82,6 +82,8 @@ export class TicketTypeService {
       price: input.price,
       currency: input.currency ?? 'USD',
       quantity: input.quantity,
+      salesStartAt:
+        input.salesStartAt == null ? null : new Date(input.salesStartAt),
     };
 
     const ticketType = await this.ticketTypeRepository.createWithOutbox(data);
@@ -102,6 +104,10 @@ export class TicketTypeService {
     if (input.price !== undefined) data.price = input.price;
     if (input.currency !== undefined) data.currency = input.currency;
     if (input.quantity !== undefined) data.quantity = input.quantity;
+    if (input.salesStartAt !== undefined) {
+      data.salesStartAt =
+        input.salesStartAt === null ? null : new Date(input.salesStartAt);
+    }
 
     if (Object.keys(data).length === 0) {
       throw new ApiError(
