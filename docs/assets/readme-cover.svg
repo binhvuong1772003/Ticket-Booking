@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
+  <title id="title">Ticket Booking — Personal Backend Project</title>
+  <desc id="desc">A navy project cover with a ticket illustration, seven connected service nodes, and technology labels for NestJS, GraphQL, gRPC, Kafka, PostgreSQL, MongoDB, Redis, and Stripe.</desc>
+  <rect width="1280" height="420" rx="24" fill="#0f172a"/>
+  <path d="M0 340H1280M800 0V420M1040 0V420" stroke="#1e293b"/>
+  <rect x="56" y="50" width="6" height="22" rx="3" fill="#38bdf8"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="78" y="67" fill="#94a3b8" font-size="16" font-weight="600" letter-spacing="3">PERSONAL BACKEND PROJECT</text>
+    <text x="56" y="152" fill="#f8fafc" font-size="66" font-weight="700" letter-spacing="-2">Ticket Booking</text>
+    <text x="59" y="199" fill="#cbd5e1" font-size="23">From the first reservation to the final confirmation.</text>
+    <text x="59" y="252" fill="#7dd3fc" font-size="17" font-weight="600">7 SERVICES</text>
+    <circle cx="190" cy="246" r="3" fill="#475569"/>
+    <text x="208" y="252" fill="#cbd5e1" font-size="17">Scheduled sales</text>
+    <circle cx="364" cy="246" r="3" fill="#475569"/>
+    <text x="382" y="252" fill="#cbd5e1" font-size="17">Payments &amp; refunds</text>
+    <g fill="#1e293b" stroke="#334155">
+      <rect x="56" y="285" width="100" height="34" rx="8"/>
+      <rect x="166" y="285" width="112" height="34" rx="8"/>
+      <rect x="288" y="285" width="88" height="34" rx="8"/>
+      <rect x="386" y="285" width="90" height="34" rx="8"/>
+    </g>
+    <g fill="#e2e8f0" font-size="15" font-weight="600" text-anchor="middle">
+      <text x="106" y="307">NestJS</text><text x="222" y="307">GraphQL</text>
+      <text x="332" y="307">gRPC</text><text x="431" y="307">Kafka</text>
+    </g>
+    <text x="58" y="383" fill="#94a3b8" font-size="16" letter-spacing="1">TYPESCRIPT / POSTGRESQL / MONGODB / REDIS / STRIPE / DOCKER</text>
+  </g>
+  <g stroke="#38bdf8" stroke-width="2" fill="none" opacity="0.55">
+    <path d="M1000 170L866 86M1000 170L1134 86M1000 170L856 246M1000 170L1144 246M1000 170V302M1000 170V42"/>
+  </g>
+  <g fill="#0f172a" stroke="#38bdf8" stroke-width="2">
+    <circle cx="866" cy="86" r="10"/><circle cx="1134" cy="86" r="10"/>
+    <circle cx="856" cy="246" r="10"/><circle cx="1144" cy="246" r="10"/>
+    <circle cx="1000" cy="302" r="10"/><circle cx="1000" cy="42" r="10"/>
+  </g>
+  <g transform="translate(900 115) rotate(-8 100 55)">
+    <path d="M14 0H186Q200 0 200 14V36C179 36 179 74 200 74V96Q200 110 186 110H14Q0 110 0 96V74C21 74 21 36 0 36V14Q0 0 14 0Z" fill="#38bdf8"/>
+    <path d="M146 10V100" stroke="#075985" stroke-width="2" stroke-dasharray="5 5"/>
+    <path d="M45 56L65 75L104 35" fill="none" stroke="#0f172a" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M167 34V77M174 34V77M181 34V77" stroke="#075985" stroke-width="3"/>
+  </g>
+</svg>
