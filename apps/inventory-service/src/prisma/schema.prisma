@@ -34,6 +34,8 @@ model Inventory {
   // hạng vé (ticket-type.updated/deleted).
   sessionActive Boolean @default(false)
   typeActive    Boolean @default(true)
+  salesStartAt  DateTime?
+  salesScheduleVersion Int @default(0)
 
   total        Int
   available Int

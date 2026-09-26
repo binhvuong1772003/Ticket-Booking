@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { parseSalesStartAt, parseSalesScheduleVersion } from './sales-start-at';
 import { InventoryService } from '../inventory.service';
 
 export type TicketTypeCreatedEvent = {
@@ -14,6 +15,8 @@ export type TicketTypeCreatedEvent = {
     price: number;
     currency: string;
     quantity: number;
+    salesStartAt?: string | null;
+    salesScheduleVersion?: number;
   };
 };
 
@@ -22,6 +25,11 @@ export class TicketTypeCreatedHandler {
   constructor(private readonly inventoryService: InventoryService) {}
 
   handle(event: TicketTypeCreatedEvent) {
+    const salesStartAt = parseSalesStartAt(event.payload.salesStartAt);
+    const salesScheduleVersion = parseSalesScheduleVersion(
+      event.payload.salesScheduleVersion ?? 0,
+      0,
+    );
     return this.inventoryService.createFromTicketTypeCreated({
       ticketTypeId: event.payload.ticketTypeId,
       sessionId: event.payload.sessionId,
@@ -30,6 +38,8 @@ export class TicketTypeCreatedHandler {
       price: event.payload.price,
       currency: event.payload.currency,
       total: event.payload.quantity,
+      salesStartAt,
+      salesScheduleVersion,
     });
   }
 }

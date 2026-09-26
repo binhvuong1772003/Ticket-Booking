@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { parseSalesStartAt, parseSalesScheduleVersion } from './sales-start-at';
 import { InventoryService } from '../inventory.service';
 
 export type TicketTypeUpdatedEvent = {
@@ -14,6 +15,17 @@ export type TicketTypeUpdatedEvent = {
     currency?: string;
     quantity?: number;
     status?: string;
+    salesStartAt?: string | null;
+    salesScheduleVersion?: number;
+    inventorySnapshot?: {
+      sessionId: string;
+      name: string;
+      code: string;
+      price: number;
+      currency: string;
+      quantity: number;
+      status: string;
+    };
   };
 };
 
@@ -22,6 +34,18 @@ export class TicketTypeUpdatedHandler {
   constructor(private readonly inventoryService: InventoryService) {}
 
   handle(event: TicketTypeUpdatedEvent) {
-    return this.inventoryService.applyTicketTypeUpdated(event.payload);
+    const payload = event.payload;
+    const schedule = payload.salesStartAt !== undefined;
+    if (schedule && !payload.inventorySnapshot)
+      throw new Error('Missing inventorySnapshot for schedule update');
+    return this.inventoryService.applyTicketTypeUpdated({
+      ...payload,
+      salesStartAt: schedule
+        ? parseSalesStartAt(payload.salesStartAt)
+        : undefined,
+      salesScheduleVersion: schedule
+        ? parseSalesScheduleVersion(payload.salesScheduleVersion, 1)
+        : undefined,
+    });
   }
 }

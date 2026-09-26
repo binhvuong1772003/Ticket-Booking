@@ -97,6 +97,9 @@ export class InventoryService {
     price: number;
     currency: string;
     total: number;
+    salesStartAt?: Date | null;
+    salesScheduleVersion?: number;
+    typeActive?: boolean;
   }) {
     const { ticketTypeId, total } = data;
     if (!ticketTypeId?.trim()) {
@@ -133,6 +136,9 @@ export class InventoryService {
       price: data.price,
       currency: data.currency,
       total,
+      salesStartAt: data.salesStartAt ?? null,
+      salesScheduleVersion: data.salesScheduleVersion ?? 0,
+      typeActive: data.typeActive,
     });
   }
 
@@ -144,6 +150,17 @@ export class InventoryService {
     currency?: string;
     quantity?: number;
     status?: string;
+    salesStartAt?: Date | null;
+    salesScheduleVersion?: number;
+    inventorySnapshot?: {
+      sessionId: string;
+      name: string;
+      code: string;
+      price: number;
+      currency: string;
+      quantity: number;
+      status: string;
+    };
   }) {
     if (!data.ticketTypeId?.trim()) {
       throw new RpcException({
@@ -152,12 +169,29 @@ export class InventoryService {
       });
     }
 
+    if (data.salesStartAt !== undefined && data.inventorySnapshot) {
+      const snapshot = data.inventorySnapshot;
+      await this.createFromTicketTypeCreated({
+        ticketTypeId: data.ticketTypeId,
+        sessionId: snapshot.sessionId,
+        name: snapshot.name,
+        code: snapshot.code,
+        price: snapshot.price,
+        currency: snapshot.currency,
+        total: snapshot.quantity,
+        typeActive: snapshot.status === 'ACTIVE',
+        salesStartAt: data.salesStartAt,
+        salesScheduleVersion: data.salesScheduleVersion,
+      });
+    }
     return this.inventoryRepository.applyTicketTypeUpdate(data.ticketTypeId, {
       name: data.name,
       code: data.code,
       price: data.price,
       currency: data.currency,
       quantity: data.quantity,
+      salesStartAt: data.salesStartAt,
+      salesScheduleVersion: data.salesScheduleVersion,
       typeActive:
         data.status === undefined ? undefined : data.status === 'ACTIVE',
     });

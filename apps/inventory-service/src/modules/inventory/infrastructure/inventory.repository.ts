@@ -12,6 +12,9 @@ export type CreateInventoryData = {
   price?: number;
   currency?: string;
   total: number;
+  salesStartAt?: Date | null;
+  salesScheduleVersion?: number;
+  typeActive?: boolean;
 };
 export type ReserveInventoryData = {
   ticketTypeId: string;
@@ -45,6 +48,9 @@ export class InventoryRepository {
           price: data.price,
           currency: data.currency,
           total: data.total,
+          salesStartAt: data.salesStartAt ?? null,
+          salesScheduleVersion: data.salesScheduleVersion ?? 0,
+          typeActive: data.typeActive ?? true,
           available: data.total,
         },
       });
@@ -67,6 +73,7 @@ export class InventoryRepository {
     });
   }
   async reserve(data: ReserveInventoryData) {
+    const now = new Date();
     return this.prisma.$transaction(async (tx) => {
       const result = await tx.inventory.updateMany({
         where: {
@@ -77,6 +84,12 @@ export class InventoryRepository {
           available: {
             gte: data.quantity,
           },
+          OR: [
+            { salesStartAt: { lte: now } },
+            { salesStartAt: null },
+            // MongoDB legacy documents may not have the field at all.
+            { salesStartAt: { isSet: false } },
+          ],
         },
         data: {
           available: {
@@ -98,6 +111,12 @@ export class InventoryRepository {
           throw new RpcException({
             code: 9,
             message: 'Ticket type is not on sale',
+          });
+        }
+        if (inventory.salesStartAt && inventory.salesStartAt > now) {
+          throw new RpcException({
+            code: 9,
+            message: 'Ticket sales have not started',
           });
         }
         throw new RpcException({
@@ -239,6 +258,8 @@ export class InventoryRepository {
       currency?: string;
       quantity?: number;
       typeActive?: boolean;
+      salesStartAt?: Date | null;
+      salesScheduleVersion?: number;
     },
   ) {
     return this.prisma.$transaction(async (tx) => {
@@ -250,6 +271,14 @@ export class InventoryRepository {
       }
 
       const data: Prisma.InventoryUpdateInput = {};
+      if (
+        fields.salesStartAt !== undefined &&
+        fields.salesScheduleVersion !== undefined &&
+        fields.salesScheduleVersion > (inventory.salesScheduleVersion ?? 0)
+      ) {
+        data.salesStartAt = fields.salesStartAt;
+        data.salesScheduleVersion = fields.salesScheduleVersion;
+      }
       if (fields.name !== undefined) data.name = fields.name;
       if (fields.code !== undefined) data.code = fields.code;
       if (fields.price !== undefined) data.price = fields.price;
