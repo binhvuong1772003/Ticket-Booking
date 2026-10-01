@@ -91,7 +91,8 @@ model InventoryHold {
 model SessionCatalog {
   sessionId String @id @map("_id")
 
-  status String
+  eventId String?
+  status  String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

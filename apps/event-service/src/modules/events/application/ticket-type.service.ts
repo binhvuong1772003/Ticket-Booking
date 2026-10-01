@@ -80,7 +80,8 @@ export class TicketTypeService {
       name: input.name,
       code: input.code,
       price: input.price,
-      currency: input.currency ?? 'USD',
+      // Currency của session — chỉ đưa vào payload event cho downstream.
+      currency: session.currency ?? 'USD',
       quantity: input.quantity,
       salesStartAt:
         input.salesStartAt == null ? null : new Date(input.salesStartAt),
@@ -102,7 +103,6 @@ export class TicketTypeService {
     if (input.name !== undefined) data.name = input.name;
     if (input.code !== undefined) data.code = input.code;
     if (input.price !== undefined) data.price = input.price;
-    if (input.currency !== undefined) data.currency = input.currency;
     if (input.quantity !== undefined) data.quantity = input.quantity;
     if (input.salesStartAt !== undefined) {
       data.salesStartAt =

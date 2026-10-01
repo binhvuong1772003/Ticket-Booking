@@ -55,6 +55,7 @@ model Event {
   summary       String?
   description   String?
   coverImageUrl String?
+  posterImageUrl String?
 
   // Tên cá nhân, nhóm hoặc thương hiệu hiển thị công khai.
   organizerDisplayName String?
@@ -70,6 +71,8 @@ model Event {
   cancellationReason String?
   archivedAt         DateTime?
 
+  featuredOrder Int?
+
   // Tăng khi event hoặc session của event thay đổi.
   version Int @default(1)
 
@@ -80,6 +83,7 @@ model Event {
 
   @@index([ownerId, status])
   @@index([status, publishedAt])
+  @@index([status, featuredOrder, id])
   @@index([categoryId])
   @@map("events")
 }
@@ -96,6 +100,7 @@ model EventSession {
   venueAddress String?
   city         String?
   countryCode  String?
+  placeId      String?
 
   // Nullable để hỗ trợ bản nháp chưa hoàn chỉnh.
   startsAt DateTime?
@@ -105,7 +110,11 @@ model EventSession {
   // Sức chứa của suất diễn; không phải tồn vé.
   capacity Int?
 
+  // 1 session = 1 currency — chốt ở mức session, ticket type chỉ mang price.
+  currency String @default("USD")
+
   status EventSessionStatus @default(DRAFT)
+  version Int @default(1)
 
   cancelledAt        DateTime?
   cancellationReason String?
@@ -117,6 +126,7 @@ model EventSession {
 
   @@index([eventId, startsAt])
   @@index([status, startsAt])
+  @@index([countryCode, placeId, status, startsAt])
   @@map("event_sessions")
 }
 
@@ -155,9 +165,9 @@ model TicketType {
   name String
   code String
 
-  // Lưu tiền theo đơn vị nhỏ nhất, ví dụ VND thì lưu trực tiếp bằng Int.
-  price    Int
-  currency String @default("USD")
+  // Lưu tiền theo đơn vị nhỏ nhất của session.currency, ví dụ VND thì lưu
+  // trực tiếp bằng Int. Currency sống ở EventSession — không lặp lại ở đây.
+  price Int
 
   quantity Int
   sold     Int @default(0)

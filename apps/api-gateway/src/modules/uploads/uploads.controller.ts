@@ -13,6 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { createHash } from 'node:crypto';
 import type { Request } from 'express';
+import sharp from 'sharp';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME = new Set([
@@ -25,6 +26,7 @@ const ALLOWED_MIME = new Set([
 const FOLDERS = {
   avatar: 'avatars',
   event: 'events',
+  'event-poster': 'events/posters',
 } as const;
 
 type UploadedImage = {
@@ -62,9 +64,29 @@ export class UploadsController {
       throw new BadRequestException('Unsupported image type');
     }
 
-    const folder = purpose ? FOLDERS[purpose] : undefined;
+    const folder =
+      purpose && Object.hasOwn(FOLDERS, purpose) ? FOLDERS[purpose] : undefined;
     if (!folder) {
-      throw new BadRequestException('purpose must be one of: avatar, event');
+      throw new BadRequestException(
+        'purpose must be one of: avatar, event, event-poster',
+      );
+    }
+
+    if (purpose === 'event-poster') {
+      let metadata: sharp.Metadata;
+      try {
+        metadata = await sharp(file.buffer).metadata();
+      } catch {
+        throw new BadRequestException('Invalid poster image');
+      }
+      const rotated = (metadata.orientation ?? 1) >= 5;
+      const width = rotated ? metadata.height : metadata.width;
+      const height = rotated ? metadata.width : metadata.height;
+      if (!width || !height || width * 4 !== height * 3) {
+        throw new BadRequestException(
+          'Poster must have a portrait 3:4 aspect ratio (e.g. 900x1200)',
+        );
+      }
     }
 
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;

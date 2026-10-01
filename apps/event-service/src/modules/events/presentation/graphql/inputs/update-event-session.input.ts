@@ -46,6 +46,11 @@ export class UpdateEventSessionInput {
   @Matches(/^[A-Z]{2}$/)
   countryCode?: string | null;
 
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsString()
+  placeId?: string | null;
+
   @Field(() => Date, { nullable: true })
   @ValidateIf((_, value) => value !== undefined && value !== null)
   @IsDate()
@@ -66,4 +71,11 @@ export class UpdateEventSessionInput {
   @IsInt()
   @Min(1)
   capacity?: number | null;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @Matches(/^[A-Za-z]{3}$/, {
+    message: 'currency must be a 3-letter ISO 4217 code',
+  })
+  currency?: string | null;
 }

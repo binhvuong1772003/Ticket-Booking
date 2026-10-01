@@ -19,6 +19,7 @@ export class SessionStatusChangedHandler {
   handle(event: SessionStatusChangedEvent) {
     return this.inventoryService.applySessionStatusChanged({
       sessionId: event.payload.sessionId,
+      eventId: event.payload.eventId,
       status: event.payload.status,
     });
   }

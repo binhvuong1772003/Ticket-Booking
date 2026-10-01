@@ -37,12 +37,6 @@ export class CreateTicketTypeInput {
   @Min(0)
   price!: number;
 
-  @Field({ nullable: true, defaultValue: 'USD' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(3)
-  currency?: string;
-
   @Field(() => Int)
   @IsInt()
   @Min(1)

@@ -23,8 +23,10 @@ model Payment {
   // UUID từ auth-service — ai trả tiền (để event refund mang user_id).
   userId             String?
   checkoutSessionId  String?       @unique
-  paymentIntentId    String?       @unique
-  stripeRefundId     String?       @unique
+  // Không @unique: Mongo unique index coi null là 1 giá trị → chỉ cho 1 payment
+  // chưa có intent/refund. Stripe đã đảm bảo 1 intent ↔ 1 checkout session.
+  paymentIntentId    String?
+  stripeRefundId     String?
   organizerAccountId String?
 
   // Đơn vị nhỏ nhất của currency (xu/cent)
@@ -40,6 +42,8 @@ model Payment {
   refundRequestedAt  DateTime?
 
   @@index([bookingId])
+  @@index([paymentIntentId])
+  @@index([stripeRefundId])
   @@index([status, createdAt])
   @@index([status, refundRequestedAt])
   @@map("payments")

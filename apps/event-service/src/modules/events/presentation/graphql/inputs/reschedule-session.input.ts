@@ -55,4 +55,9 @@ export class RescheduleSessionInput {
   @IsOptional()
   @Matches(/^[A-Z]{2}$/)
   countryCode?: string | null;
+
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsString()
+  placeId?: string | null;
 }

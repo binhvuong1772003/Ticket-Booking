@@ -115,7 +115,15 @@ export class AuthResolver {
       });
     }
 
-    const tokens = await this.authService.refreshAccessToken(refreshToken);
+    let tokens;
+    try {
+      tokens = await this.authService.refreshAccessToken(refreshToken);
+    } catch (error) {
+      if (error instanceof ApiError && error.extensions.code === 'UNAUTHENTICATED') {
+        clearRefreshTokenCookie(context.res);
+      }
+      throw error;
+    }
     setRefreshTokenCookie(context.res, tokens.refreshToken);
     return { accessToken: tokens.accessToken };
   }

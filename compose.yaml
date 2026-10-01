@@ -78,7 +78,7 @@ services:
     entrypoint: ['/bin/sh', '-ec']
     command:
       - |
-        for topic in auth.user.registered ticket-type.created ticket-type.updated ticket-type.deleted session.status.changed session.rescheduled payment.succeeded payment.expired payment.failed payment.refunded booking.refund.requested event.cancelled event.published; do
+        for topic in auth.user.registered ticket-type.created ticket-type.updated ticket-type.deleted session.status.changed session.rescheduled payment.succeeded payment.expired payment.failed payment.refunded booking.refund.requested booking.confirmed booking.dead-letter ticket.dead-letter ticket.issued event.cancelled event.published; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic "$$topic" --partitions 1 --replication-factor 1
         done
   api-gateway:
@@ -92,6 +92,9 @@ services:
       AUTH_SERVICE_BASE_URL: http://auth-service:4001
       EVENT_SERVICE_URL: http://event-service:4003/graphql
       BOOKING_SERVICE_URL: http://booking-service:4002/graphql
+      TICKET_SERVICE_URL: http://ticket-service:4005/graphql
+      TICKET_GRPC_URL: ticket-service:50053
+      NOTIFICATION_SERVICE_URL: http://notification-service:4004
     ports:
       - '127.0.0.1:3000:3000'
     depends_on:
@@ -101,6 +104,10 @@ services:
         condition: service_healthy
       event-service:
         condition: service_healthy
+      ticket-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_started
     healthcheck:
       test:
         [
@@ -180,6 +187,8 @@ services:
       NODE_ENV: development
       EVENT_PORT: 4003
       KAFKA_BROKER: kafka:29092
+      BOOKING_SERVICE_URL: http://booking-service:4002/graphql
+      INVENTORY_GRPC_URL: inventory-service:50051
     ports:
       - '127.0.0.1:4003:4003'
     depends_on:
@@ -252,6 +261,38 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+  ticket-service:
+    <<: *backend
+    env_file: ./apps/ticket-service/.env
+    command: ['node', 'dist/apps/ticket-service/main.js']
+    environment:
+      NODE_ENV: development
+      KAFKA_BROKERS: kafka:29092
+      TICKET_GRPC_URL: 0.0.0.0:50053
+      TICKET_HTTP_PORT: 4005
+      EVENT_SERVICE_URL: http://event-service:4003/graphql
+      BOOKING_SERVICE_URL: http://booking-service:4002/graphql
+      NOTIFICATION_SERVICE_URL: http://notification-service:4004
+    ports:
+      - '127.0.0.1:50053:50053'
+      - '127.0.0.1:4005:4005'
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      event-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          'Promise.all([fetch("http://127.0.0.1:4005/graphql",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({query:"{__typename}"})}).then(async r=>r.ok&&!(await r.json()).errors).catch(()=>false),new Promise(ok=>{const s=require("net").connect(50053,"127.0.0.1");s.setTimeout(2000);s.on("connect",()=>{s.end();ok(true)});s.on("error",()=>ok(false));s.on("timeout",()=>{s.destroy();ok(false)})})]).then(results=>process.exit(results.every(Boolean)?0:1))',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
   notification-service:
     <<: *backend
     env_file: ./apps/notification-service/.env
@@ -262,11 +303,30 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       AUTH_SERVICE_URL: http://auth-service:4001/graphql
+      BOOKING_SERVICE_URL: http://booking-service:4002/graphql
+      TICKET_GRPC_URL: ticket-service:50053
+      NOTIFICATION_PORT: 4004
     depends_on:
       kafka-init:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      ticket-service:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          'const s=require("net").connect(4004,"127.0.0.1");s.on("connect",()=>{s.end();process.exit(0)});s.on("error",()=>process.exit(1))',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 volumes:
   postgres-data:
   redis-data:

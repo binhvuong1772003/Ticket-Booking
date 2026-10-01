@@ -18,6 +18,7 @@ const event = (overrides: Partial<Stripe.Event> = {}): Stripe.Event =>
         payment_intent: 'pi_123',
         amount_total: 50000,
         currency: 'usd',
+        payment_status: 'paid',
         metadata: { booking_id: 'booking-1' },
       },
     },
@@ -85,6 +86,39 @@ describe('PaymentService.processStripeEvent', () => {
       }),
     );
     expect(wake).toHaveBeenCalled();
+  });
+
+  it('waits for asynchronous payment instead of confirming an unpaid session', async () => {
+    const e = event();
+    (e.data.object as Stripe.Checkout.Session).payment_status = 'unpaid';
+
+    expect(await service.processStripeEvent(e)).toEqual({
+      received: true,
+      ignored: 'payment not yet paid',
+    });
+    expect(recordWebhookEvent).not.toHaveBeenCalled();
+  });
+
+  it('confirms an asynchronous payment when Stripe reports success', async () => {
+    findByStripeRef.mockResolvedValue({ id: 'pay-1' });
+    recordWebhookEvent.mockResolvedValue(undefined);
+
+    await service.processStripeEvent(event({ type: 'checkout.session.async_payment_succeeded' }));
+
+    expect(recordWebhookEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'SUCCEEDED', eventType: 'payment.succeeded' }),
+    );
+  });
+
+  it('records an asynchronous payment failure', async () => {
+    findByStripeRef.mockResolvedValue({ id: 'pay-1' });
+    recordWebhookEvent.mockResolvedValue(undefined);
+
+    await service.processStripeEvent(event({ type: 'checkout.session.async_payment_failed' }));
+
+    expect(recordWebhookEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'FAILED', eventType: 'payment.failed' }),
+    );
   });
 
   it('emits outbox even when no matching payment exists', async () => {

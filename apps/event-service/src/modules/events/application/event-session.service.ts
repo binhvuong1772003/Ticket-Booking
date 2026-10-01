@@ -14,6 +14,24 @@ import {
 import { RescheduleSessionInput } from '../presentation/graphql/inputs/reschedule-session.input';
 import { ApiError } from '../../../common/errors/api-error';
 import { OutboxProcessor } from '../infrastructure/outbox.processor';
+import { resolveSessionCurrency } from './country-currency';
+import { normalizeCurrency, SUPPORTED_CURRENCIES } from './supported-currency';
+import { validatePlace, type PlaceOption } from './location-catalog';
+
+function resolveSessionCity(
+  place: PlaceOption | undefined,
+  city: string | null | undefined,
+  existingCity?: string | null,
+) {
+  if (place?.id === 'VN-OTHER') {
+    const effectiveCity = city === undefined ? existingCity : city;
+    if (!effectiveCity?.trim()) {
+      throw new ApiError('City is required for VN-OTHER', 'BAD_USER_INPUT');
+    }
+    return city;
+  }
+  return place?.type === 'CITY' ? place.name : city;
+}
 
 @Injectable()
 export class EventSessionService {
@@ -65,17 +83,28 @@ export class EventSessionService {
       );
     }
 
+    let place: PlaceOption | undefined;
+    if (input.placeId != null) {
+      if (!input.countryCode) {
+        throw new ApiError('countryCode is required with placeId', 'BAD_USER_INPUT');
+      }
+      place = validatePlace(input.placeId, input.countryCode);
+    }
+    const city = resolveSessionCity(place, input.city);
+
     const data: CreateEventSessionData = {
       eventId: input.eventId,
       name: input.name,
       venueName: input.venueName,
       venueAddress: input.venueAddress,
-      city: input.city,
+      city,
       countryCode: input.countryCode,
+      placeId: input.placeId,
       startsAt,
       endsAt,
       timezone: input.timezone,
       capacity: input.capacity,
+      currency: resolveSessionCurrency(input.currency, input.countryCode),
     };
 
     return this.eventsSessionRepository.create(data);
@@ -114,16 +143,41 @@ export class EventSessionService {
       );
     }
 
+    const countryCode =
+      input.countryCode === undefined ? session.countryCode : input.countryCode;
+    if (
+      session.placeId &&
+      input.countryCode !== undefined &&
+      input.countryCode !== session.countryCode &&
+      input.placeId === undefined
+    ) {
+      throw new ApiError(
+        'Changing country requires replacing or clearing placeId',
+        'BAD_USER_INPUT',
+      );
+    }
+    const placeId = input.placeId === undefined ? session.placeId : input.placeId;
+    let place: PlaceOption | undefined;
+    if (placeId != null) {
+      if (!countryCode) {
+        throw new ApiError('countryCode is required with placeId', 'BAD_USER_INPUT');
+      }
+      place = validatePlace(placeId, countryCode);
+    }
+    const city = resolveSessionCity(place, input.city, session.city);
+
     const hasChanges = [
       input.name,
       input.venueName,
       input.venueAddress,
       input.city,
       input.countryCode,
+      input.placeId,
       input.startsAt,
       input.endsAt,
       input.timezone,
       input.capacity,
+      input.currency,
     ].some((value) => value !== undefined);
 
     if (!hasChanges) {
@@ -173,15 +227,23 @@ export class EventSessionService {
       name: input.name,
       venueName: input.venueName,
       venueAddress: input.venueAddress,
-      city: input.city,
+      city,
       countryCode: input.countryCode,
+      placeId: input.placeId,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
       timezone: input.timezone,
       capacity: input.capacity,
+      currency: normalizeCurrency(input.currency),
     };
 
     return this.eventsSessionRepository.update(data);
+  }
+
+  // Catalog công khai: currency mà payment layer chấp nhận — frontend dùng
+  // cho dropdown và biết minorUnit khi format giá/serialize amount.
+  listSupportedCurrencies() {
+    return SUPPORTED_CURRENCIES;
   }
 
   /* Đổi giờ/địa điểm của session đã công bố — operation duy nhất còn mở
@@ -217,6 +279,32 @@ export class EventSessionService {
       );
     }
 
+    const countryCode =
+      input.countryCode === undefined ? session.countryCode : input.countryCode;
+    if (input.placeId === null) {
+      throw new ApiError('Scheduled sessions cannot clear placeId', 'BAD_USER_INPUT');
+    }
+    if (
+      session.placeId &&
+      input.countryCode !== undefined &&
+      input.countryCode !== session.countryCode &&
+      input.placeId === undefined
+    ) {
+      throw new ApiError(
+        'Changing country requires replacing placeId',
+        'BAD_USER_INPUT',
+      );
+    }
+    const placeId = input.placeId === undefined ? session.placeId : input.placeId;
+    let place: PlaceOption | undefined;
+    if (placeId != null) {
+      if (!countryCode) {
+        throw new ApiError('countryCode is required with placeId', 'BAD_USER_INPUT');
+      }
+      place = validatePlace(placeId, countryCode);
+    }
+    const city = resolveSessionCity(place, input.city, session.city);
+
     const hasChanges = [
       input.startsAt,
       input.endsAt,
@@ -225,6 +313,7 @@ export class EventSessionService {
       input.venueAddress,
       input.city,
       input.countryCode,
+      input.placeId,
     ].some((value) => value !== undefined);
 
     if (!hasChanges) {
@@ -258,8 +347,9 @@ export class EventSessionService {
       timezone: input.timezone,
       venueName: input.venueName,
       venueAddress: input.venueAddress,
-      city: input.city,
+      city,
       countryCode: input.countryCode,
+      placeId: input.placeId,
     };
 
     const updated = await this.eventsSessionRepository.reschedule(

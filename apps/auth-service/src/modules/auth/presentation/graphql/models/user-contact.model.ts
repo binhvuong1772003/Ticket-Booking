@@ -12,4 +12,7 @@ export class UserContact {
 
   @Field(() => String, { nullable: true })
   fullName!: string | null;
+
+  @Field(() => Boolean)
+  emailVerified!: boolean;
 }

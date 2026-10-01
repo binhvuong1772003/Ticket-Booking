@@ -47,6 +47,11 @@ export class CreateEventSessionInput {
   })
   countryCode?: string | null;
 
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsString()
+  placeId?: string | null;
+
   @Field(() => Date, { nullable: true })
   @IsOptional()
   @IsDate()
@@ -67,4 +72,12 @@ export class CreateEventSessionInput {
   @IsInt()
   @Min(1)
   capacity?: number | null;
+
+  // Bỏ trống → derive từ countryCode; cuối cùng fallback USD.
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @Matches(/^[A-Za-z]{3}$/, {
+    message: 'currency must be a 3-letter ISO 4217 code',
+  })
+  currency?: string | null;
 }

@@ -10,6 +10,7 @@ datasource db {
 
 enum BookingStatus {
   PENDING
+  CONFIRMING
   CONFIRMED
   CANCELLED
   EXPIRED
@@ -33,6 +34,8 @@ model Booking {
 
   status        BookingStatus @default(PENDING)
   paymentStatus PaymentStatus @default(PENDING)
+  recipientFullName String?
+  recipientEmail    String?
 
   subtotal       Float
   discountAmount Float      @default(0)
@@ -51,6 +54,13 @@ model Booking {
   paymentFailedAt   DateTime?
   refundedAt        DateTime?
 
+  confirmationAttempts         Int       @default(0)
+  nextConfirmationAttemptAt    DateTime?
+  confirmationLastError        String?
+  inventoryCompensationPending Boolean?  @default(false)
+  inventoryReleasedAt          DateTime?
+  nextCompensationAttemptAt    DateTime?
+
   version Int @default(0)
 
   createdAt DateTime @default(now())
@@ -62,7 +72,10 @@ model Booking {
   @@index([eventId])
   @@index([sessionId, status])
   @@index([status, expiresAt])
+  @@index([status, paymentStatus, nextConfirmationAttemptAt])
+  @@index([status, inventoryCompensationPending, nextCompensationAttemptAt])
   @@index([paymentStatus, createdAt])
+  @@index([paymentStatus, confirmedAt])
   @@map("bookings")
 }
 
@@ -77,6 +90,8 @@ model BookingItem {
 
   quantity  Int
   unitPrice Float
+  // Exact amount in currency minor units; nullable only for legacy bookings.
+  unitPriceMinor Int?
   subtotal  Float
 
   reservationId String?
@@ -89,6 +104,34 @@ model BookingItem {
   @@index([ticketTypeId])
   @@index([reservationId])
   @@map("booking_items")
+}
+
+// Outbox cho booking.confirmed — ticket-service nghe event này để cấp vé.
+// Ghi trong cùng tx với transition CONFIRMED nên không thể mất event.
+model OutboxEvent {
+  // Dùng làm message ID để consumer chống xử lý trùng.
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // Booking id (hex string, không phải ObjectId).
+  aggregateId String
+
+  eventType String
+
+  aggregateVersion Int
+  schemaVersion    Int @default(1)
+
+  payload Json
+
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError     String?
+
+  @@index([publishedAt, nextAttemptAt, createdAt])
+  @@index([aggregateId, aggregateVersion])
+  @@map("outbox_events")
 }
 
 // Projection eventId → organizerId từ event.published — phục vụ

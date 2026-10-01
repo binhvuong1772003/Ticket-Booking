@@ -4,6 +4,7 @@ type UserContact = {
   id: string;
   email: string;
   fullName: string | null;
+  emailVerified: boolean;
 };
 
 // Tra userId → email qua query nội bộ userContact của auth-service
@@ -17,9 +18,10 @@ export class AuthClient {
     const response = await fetch(this.baseUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(5000),
       body: JSON.stringify({
         query: `query ($id: String!) {
-          userContact(id: $id) { id email fullName }
+          userContact(id: $id) { id email fullName emailVerified }
         }`,
         variables: { id: userId },
       }),

@@ -84,7 +84,13 @@
       "sourceRoot": "apps/notification-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/notification-service/tsconfig.app.json",
-        "deleteOutDir": false
+        "deleteOutDir": false,
+        "assets": [
+          {
+            "include": "generated/**/*",
+            "watchAssets": true
+          }
+        ]
       }
     },
     "payment-service": {
@@ -94,6 +100,22 @@
       "sourceRoot": "apps/payment-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/payment-service/tsconfig.app.json",
+        "deleteOutDir": false,
+        "assets": [
+          {
+            "include": "generated/**/*",
+            "watchAssets": true
+          }
+        ]
+      }
+    },
+    "ticket-service": {
+      "type": "application",
+      "root": "apps/ticket-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/ticket-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/ticket-service/tsconfig.app.json",
         "deleteOutDir": false,
         "assets": [
           {

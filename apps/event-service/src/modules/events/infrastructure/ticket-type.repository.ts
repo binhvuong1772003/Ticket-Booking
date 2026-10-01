@@ -9,17 +9,18 @@ export type CreateTicketTypeData = {
   name: string;
   code: string;
   price: number;
+  // Currency của session — chỉ đưa vào payload event, ticket_type không lưu.
   currency: string;
   quantity: number;
   salesStartAt?: Date | null;
 };
 
 // Chỉ field nào đổi mới có mặt trong payload ticket-type.updated.
+// Currency sống ở session — đổi qua updateEventSession, không qua đây.
 export type UpdateTicketTypeData = {
   name?: string;
   code?: string;
   price?: number;
-  currency?: string;
   quantity?: number;
   status?: TicketTypeStatus;
   salesStartAt?: Date | null;
@@ -38,7 +39,6 @@ export class TicketTypeRepository {
             name: data.name,
             code: data.code,
             price: data.price,
-            currency: data.currency,
             quantity: data.quantity,
             salesStartAt: data.salesStartAt ?? null,
           },
@@ -57,7 +57,7 @@ export class TicketTypeRepository {
               name: ticketType.name,
               code: ticketType.code,
               price: ticketType.price,
-              currency: ticketType.currency,
+              currency: data.currency,
               quantity: ticketType.quantity,
               salesStartAt: ticketType.salesStartAt?.toISOString() ?? null,
               salesScheduleVersion: ticketType.salesScheduleVersion ?? 0,
@@ -134,6 +134,7 @@ export class TicketTypeRepository {
                 }
               : {}),
           },
+          include: { session: { select: { currency: true } } },
         });
 
         await tx.outboxEvent.create({
@@ -157,7 +158,7 @@ export class TicketTypeRepository {
                       name: ticketType.name,
                       code: ticketType.code,
                       price: ticketType.price,
-                      currency: ticketType.currency,
+                      currency: ticketType.session?.currency ?? 'USD',
                       quantity: ticketType.quantity,
                       status: ticketType.status,
                     },

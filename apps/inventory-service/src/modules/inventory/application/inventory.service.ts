@@ -10,11 +10,43 @@ import {
 @Injectable()
 export class InventoryService {
   constructor(private readonly inventoryRepository: InventoryRepository) {}
+
+  getAvailability(ticketTypes: { ticketTypeId: string; sessionId: string }[]) {
+    if (
+      !Array.isArray(ticketTypes) ||
+      ticketTypes.length < 1 ||
+      ticketTypes.length > 200 ||
+      ticketTypes.some(
+        (item) =>
+          !item ||
+          typeof item.ticketTypeId !== 'string' ||
+          !item.ticketTypeId.trim() ||
+          typeof item.sessionId !== 'string' ||
+          !item.sessionId.trim(),
+      )
+    ) {
+      throw new RpcException({
+        code: 3,
+        message: 'ticketTypes must contain between 1 and 200 ticket/session pairs',
+      });
+    }
+    return this.inventoryRepository.getAvailability(
+      [...new Map(ticketTypes.map((item) => [`${item.ticketTypeId}:${item.sessionId}`, item])).values()],
+    );
+  }
+
   reserve(data: ReserveInventoryData) {
     if (!data.ticketTypeId?.trim()) {
       throw new RpcException({
         code: 3,
         message: 'ticketTypeId is required',
+      });
+    }
+
+    if (!data.sessionId?.trim() || !data.eventId?.trim()) {
+      throw new RpcException({
+        code: 3,
+        message: 'sessionId and eventId are required',
       });
     }
 
@@ -211,7 +243,11 @@ export class InventoryService {
   /* session.status.changed — ghi catalog trước rồi flip flag trên các row
      thuộc session. Thứ tự này đảm bảo ticket-type.created đến sau vẫn đọc
      được trạng thái đúng từ catalog. */
-  async applySessionStatusChanged(data: { sessionId: string; status: string }) {
+  async applySessionStatusChanged(data: {
+    sessionId: string;
+    eventId?: string;
+    status: string;
+  }) {
     if (!data.sessionId?.trim()) {
       throw new RpcException({
         code: 3,
@@ -222,6 +258,7 @@ export class InventoryService {
     await this.inventoryRepository.upsertSessionCatalog(
       data.sessionId,
       data.status,
+      data.eventId,
     );
     return this.inventoryRepository.setSessionActive(
       data.sessionId,

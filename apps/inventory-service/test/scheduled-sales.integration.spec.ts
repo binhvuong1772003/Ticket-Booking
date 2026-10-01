@@ -21,6 +21,7 @@ describe.skipIf(!url)('scheduled sales (real MongoDB)', () => {
   const prisma = new PrismaService({ datasourceUrl: url });
   const repo = new InventoryRepository(prisma);
   const ids: string[] = [];
+  const sessionIds: string[] = [];
   const opens = new Date('2026-10-01T00:00:00.000Z');
   beforeAll(() => prisma.$connect());
   afterEach(() => vi.useRealTimers());
@@ -29,26 +30,148 @@ describe.skipIf(!url)('scheduled sales (real MongoDB)', () => {
       where: { inventoryId: { in: ids } },
     });
     await prisma.inventory.deleteMany({ where: { id: { in: ids } } });
+    await prisma.sessionCatalog.deleteMany({
+      where: { sessionId: { in: sessionIds } },
+    });
     await prisma.$disconnect();
   });
   async function inventory(salesStartAt: Date | null, total = 2) {
+    const sessionId = randomUUID();
+    const eventId = randomUUID();
     const row = await repo.create({
       ticketTypeId: randomUUID(),
+      sessionId,
       total,
       sessionActive: true,
       salesStartAt,
     });
     ids.push(row!.id);
-    return row!;
+    sessionIds.push(sessionId);
+    await repo.upsertSessionCatalog(sessionId, 'SCHEDULED', eventId);
+    return { ...row!, sessionId, eventId };
   }
-  function reserve(ticketTypeId: string) {
+  function reserve(
+    row: { ticketTypeId: string; sessionId: string; eventId: string },
+    overrides: Partial<{ sessionId: string; eventId: string }> = {},
+  ) {
     return repo.reserve({
-      ticketTypeId,
+      ticketTypeId: row.ticketTypeId,
+      sessionId: overrides.sessionId ?? row.sessionId,
+      eventId: overrides.eventId ?? row.eventId,
       quantity: 1,
       bookingId: randomUUID(),
       userId: 'schedule-test-user',
     });
   }
+
+  it('rejects session and event mismatches without changing stock or holds', async () => {
+    const row = await inventory(new Date('2000-01-01T00:00:00Z'));
+
+    await expect(
+      reserve(row, { sessionId: randomUUID() }),
+    ).rejects.toMatchObject({ error: { code: 3 } });
+    await expect(
+      reserve(row, { eventId: randomUUID() }),
+    ).rejects.toMatchObject({ error: { code: 3 } });
+
+    await expect(
+      prisma.inventory.findUniqueOrThrow({ where: { id: row.id } }),
+    ).resolves.toMatchObject({ available: 2, reserved: 0 });
+    expect(
+      await prisma.inventoryHold.count({ where: { inventoryId: row.id } }),
+    ).toBe(0);
+  });
+
+  it('returns the catalog IDs for a valid reservation', async () => {
+    const row = await inventory(new Date('2000-01-01T00:00:00Z'));
+
+    await expect(reserve(row)).resolves.toMatchObject({
+      ticketTypeId: row.ticketTypeId,
+      sessionId: row.sessionId,
+      eventId: row.eventId,
+      hold: { status: 'ACTIVE' },
+      inventory: { price: null, name: null },
+    });
+  });
+
+  it('returns unavailable without stock changes when a server mapping is absent', async () => {
+    const missingInventorySession = await repo.create({
+      ticketTypeId: randomUUID(),
+      total: 1,
+      sessionActive: true,
+      salesStartAt: new Date('2000-01-01T00:00:00Z'),
+    });
+    ids.push(missingInventorySession!.id);
+    const unmappedSessionId = randomUUID();
+    const missingCatalog = await repo.create({
+      ticketTypeId: randomUUID(),
+      sessionId: unmappedSessionId,
+      total: 1,
+      sessionActive: true,
+      salesStartAt: new Date('2000-01-01T00:00:00Z'),
+    });
+    ids.push(missingCatalog!.id);
+
+    await expect(
+      repo.reserve({
+        ticketTypeId: missingInventorySession!.ticketTypeId,
+        sessionId: randomUUID(),
+        eventId: randomUUID(),
+        quantity: 1,
+        bookingId: randomUUID(),
+        userId: 'mapping-test-user',
+      }),
+    ).rejects.toMatchObject({ error: { code: 14 } });
+    await expect(
+      repo.reserve({
+        ticketTypeId: missingCatalog!.ticketTypeId,
+        sessionId: unmappedSessionId,
+        eventId: randomUUID(),
+        quantity: 1,
+        bookingId: randomUUID(),
+        userId: 'mapping-test-user',
+      }),
+    ).rejects.toMatchObject({ error: { code: 14 } });
+    expect(
+      await prisma.inventoryHold.count({
+        where: {
+          inventoryId: {
+            in: [missingInventorySession!.id, missingCatalog!.id],
+          },
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it('keeps one event binding under concurrent status messages and still applies later status', async () => {
+    const sessionId = randomUUID();
+    const eventIds = [randomUUID(), randomUUID()] as const;
+    sessionIds.push(sessionId);
+    const service = new InventoryService(repo);
+
+    await Promise.all(
+      eventIds.map((eventId, index) =>
+        service.applySessionStatusChanged({
+          sessionId,
+          eventId,
+          status: index === 0 ? 'SCHEDULED' : 'CANCELLED',
+        }),
+      ),
+    );
+    const binding = await prisma.sessionCatalog.findUniqueOrThrow({
+      where: { sessionId },
+    });
+    expect(eventIds).toContain(binding.eventId);
+
+    await service.applySessionStatusChanged({
+      sessionId,
+      eventId: randomUUID(),
+      status: 'CANCELLED',
+    });
+    await expect(
+      prisma.sessionCatalog.findUniqueOrThrow({ where: { sessionId } }),
+    ).resolves.toMatchObject({ eventId: binding.eventId, status: 'CANCELLED' });
+  });
 
   it.each([
     ['2026-09-30T23:59:59.999Z', false],
@@ -59,11 +182,11 @@ describe.skipIf(!url)('scheduled sales (real MongoDB)', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(now));
     if (allowed) {
-      await expect(reserve(row.ticketTypeId)).resolves.toMatchObject({
+      await expect(reserve(row)).resolves.toMatchObject({
         hold: { status: 'ACTIVE' },
       });
     } else {
-      await expect(reserve(row.ticketTypeId)).rejects.toMatchObject({
+      await expect(reserve(row)).rejects.toMatchObject({
         error: { code: 9, message: 'Ticket sales have not started' },
       });
     }
@@ -75,6 +198,20 @@ describe.skipIf(!url)('scheduled sales (real MongoDB)', () => {
     expect(
       await prisma.inventoryHold.count({ where: { inventoryId: row.id } }),
     ).toBe(allowed ? 1 : 0);
+  });
+
+  it('allows only one concurrent buyer to reserve the last ticket', async () => {
+    const row = await inventory(new Date('2000-01-01T00:00:00.000Z'), 1);
+    const results = await Promise.allSettled([reserve(row), reserve(row)]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    await expect(
+      prisma.inventory.findUniqueOrThrow({ where: { id: row.id } }),
+    ).resolves.toMatchObject({ available: 0, reserved: 1 });
+    await expect(
+      prisma.inventoryHold.count({ where: { inventoryId: row.id } }),
+    ).resolves.toBe(1);
   });
 
   it.each([false, true])(
@@ -92,7 +229,7 @@ describe.skipIf(!url)('scheduled sales (real MongoDB)', () => {
           ],
         });
       }
-      await expect(reserve(row.ticketTypeId)).resolves.toMatchObject({
+      await expect(reserve(row)).resolves.toMatchObject({
         hold: { status: 'ACTIVE' },
       });
     },
@@ -106,7 +243,7 @@ describe.skipIf(!url)('scheduled sales (real MongoDB)', () => {
         where: { id: row.id },
         data: { [field]: false },
       });
-      await expect(reserve(row.ticketTypeId)).rejects.toMatchObject({
+      await expect(reserve(row)).rejects.toMatchObject({
         error: { code: 9, message: 'Ticket type is not on sale' },
       });
       expect(
@@ -118,7 +255,7 @@ describe.skipIf(!url)('scheduled sales (real MongoDB)', () => {
   it('sells the last ticket at most once under concurrent requests', async () => {
     const row = await inventory(new Date('2000-01-01T00:00:00Z'), 1);
     const results = await Promise.allSettled(
-      Array.from({ length: 8 }, () => reserve(row.ticketTypeId)),
+      Array.from({ length: 8 }, () => reserve(row)),
     );
     expect(
       results.filter((result) => result.status === 'fulfilled'),
@@ -163,7 +300,7 @@ describe.skipIf(!url)('scheduled sales (real MongoDB)', () => {
       salesScheduleVersion: 3,
       available: 2,
     });
-    await expect(reserve(row.ticketTypeId)).resolves.toMatchObject({
+    await expect(reserve(row)).resolves.toMatchObject({
       hold: { status: 'ACTIVE' },
     });
   });

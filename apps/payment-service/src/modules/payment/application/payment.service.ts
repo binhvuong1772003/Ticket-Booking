@@ -9,6 +9,8 @@ import { CreateCheckoutInput, StripeService } from './stripe.service';
 
 const EVENT_TOPIC: Record<string, string> = {
   'checkout.session.completed': 'payment.succeeded',
+  'checkout.session.async_payment_succeeded': 'payment.succeeded',
+  'checkout.session.async_payment_failed': 'payment.failed',
   'checkout.session.expired': 'payment.expired',
   'payment_intent.payment_failed': 'payment.failed',
 };
@@ -51,6 +53,12 @@ export class PaymentService {
 
     const data = event.data.object as
       Stripe.Checkout.Session | Stripe.PaymentIntent;
+    if (
+      event.type === 'checkout.session.completed' &&
+      (data as Stripe.Checkout.Session).payment_status !== 'paid'
+    ) {
+      return { received: true, ignored: 'payment not yet paid' };
+    }
     const bookingId =
       'metadata' in data && data.metadata
         ? data.metadata.booking_id
@@ -66,7 +74,10 @@ export class PaymentService {
     };
 
     let paymentIntentId: string | undefined;
-    if (event.type === 'checkout.session.completed') {
+    if (
+      event.type === 'checkout.session.completed' ||
+      event.type === 'checkout.session.async_payment_succeeded'
+    ) {
       const session = data as Stripe.Checkout.Session;
       paymentIntentId =
         typeof session.payment_intent === 'string'

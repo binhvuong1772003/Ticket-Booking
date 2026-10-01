@@ -11,8 +11,9 @@ Host connections: Redis `localhost:6380`; Kafka `localhost:9092`. This configura
 
 ## Backend services (Docker)
 
-- `bun run start:all` (or `docker compose up -d --build`) builds the shared `ticket-booking-backend:local` image and starts all seven services plus infra.
+- `bun run start:all` (or `docker compose up -d --build`) builds the shared `ticket-booking-backend:local` image and starts all eight services plus infra.
 - Each service requires `apps/<service>/.env` (see `.env.example` in each service dir); Compose fails without them. Databases are external only — `DATABASE_URL` must point to a reachable external/host database. Use `host.docker.internal` instead of `localhost` for host-machine databases.
-- `JWT_SECRET` must be identical across gateway, auth, booking, and event services.
+- `JWT_SECRET` must be identical across gateway, auth, booking, event, and ticket services.
+- Ticket GraphQL listens on `http://localhost:4005/graphql` in local Compose; its existing gRPC listener remains on `localhost:50053`.
 - No migrations or `prisma db push` run automatically; prepare external schemas out of band.
 - Services may process pending outbox/notification work against the supplied external environment on startup.

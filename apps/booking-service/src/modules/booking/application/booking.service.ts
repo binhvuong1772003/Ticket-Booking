@@ -7,14 +7,20 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ClientGrpc } from '@nestjs/microservices';
-import { firstValueFrom, Observable } from 'rxjs';
+import { firstValueFrom, Observable, timeout } from 'rxjs';
 import { randomBytes } from 'node:crypto';
 import { GraphQLError } from 'graphql';
+import { isEmail } from 'class-validator';
 import { CreateBookingInput } from '../presentation/graphql/inputs/create-booking.input';
-import { BookingRepository } from '../infrastructure/booking.repository';
+import {
+  BookingRepository,
+  TrendingSalesCursor,
+} from '../infrastructure/booking.repository';
+import { OutboxProcessor } from '../infrastructure/outbox.processor';
 
 interface ReserveRequest {
   session_id: string;
+  event_id: string;
   ticket_type_id: string;
   quantity: number;
   booking_id: string;
@@ -24,6 +30,9 @@ interface ReserveRequest {
 interface ReserveResponse {
   success: boolean;
   reservation_id: string;
+  ticket_type_id: string;
+  session_id: string;
+  event_id: string;
   message: string;
   ticket_type_name: string;
   ticket_type_code: string;
@@ -116,6 +125,7 @@ function fromSmallestUnit(amount: number, currency: string): number {
 type CreateBookingMessage = {
   booking_id: string;
   user_id: string;
+  event_id: string;
   session_id: string;
   ticket_type_id: string;
   quantity: number;
@@ -145,6 +155,24 @@ export type EventCancelledPayload = {
   reason?: string;
 };
 
+type BookingWithInventory = {
+  id: string;
+  status: string;
+  paymentStatus: string;
+  confirmationAttempts?: number;
+  cancellationReason?: string | null;
+  inventoryCompensationPending?: boolean | null;
+  inventoryReleasedAt?: Date | null;
+  items: { reservationId: string | null }[];
+};
+
+const CONFIRMATION_RETRY_BASE_MS = 30_000;
+const CONFIRMATION_RETRY_MAX_MS = 5 * 60_000;
+const INVENTORY_CONFIRM_TIMEOUT_MS = 10_000;
+const INVENTORY_COMPENSATION_TIMEOUT_MS = 10_000;
+const REFUND_TIMEOUT_MS = 10_000;
+const COMPENSATION_RETRY_DELAY_MS = 60_000;
+
 @Injectable()
 export class BookingService implements OnModuleInit {
   private readonly logger = new Logger(BookingService.name);
@@ -157,6 +185,7 @@ export class BookingService implements OnModuleInit {
     @Inject('PAYMENT_GRPC')
     private readonly paymentClient: ClientGrpc,
     private readonly bookingRepository: BookingRepository,
+    private readonly outboxProcessor: OutboxProcessor,
   ) {}
 
   onModuleInit() {
@@ -168,6 +197,71 @@ export class BookingService implements OnModuleInit {
 
   getHealth() {
     return { service: 'booking-service', status: 'ok' };
+  }
+
+  async ticketBookingItemSnapshot(itemId: string) {
+    const snapshot = await this.bookingRepository.ticketBookingItemSnapshot(itemId);
+    if (!snapshot) throw new NotFoundException('Confirmed booking item not found');
+    return snapshot;
+  }
+
+  async internalTrendingSalesPage(input: {
+    since: Date;
+    first?: number;
+    after?: string;
+  }) {
+    if (!(input.since instanceof Date) || Number.isNaN(input.since.getTime())) {
+      throw new BadRequestException('since must be a valid date');
+    }
+    const first = input.first ?? 100;
+    if (!Number.isInteger(first) || first < 1 || first > 200) {
+      throw new BadRequestException('first must be between 1 and 200');
+    }
+    const after = input.after ? this.decodeTrendingCursor(input.after) : undefined;
+    const rows = await this.bookingRepository.aggregateTrendingSales({
+      since: input.since,
+      first: first + 1,
+      after,
+    });
+    const hasNextPage = rows.length > first;
+    const nodes = rows.slice(0, first).map((row) => ({
+      ...row,
+      cursor: this.encodeTrendingCursor(row),
+    }));
+
+    return {
+      nodes,
+      pageInfo: {
+        hasNextPage,
+        endCursor: nodes.at(-1)?.cursor ?? null,
+      },
+    };
+  }
+
+  private encodeTrendingCursor(cursor: TrendingSalesCursor) {
+    return Buffer.from(
+      JSON.stringify([cursor.confirmedQuantity, cursor.eventId]),
+    ).toString('base64url');
+  }
+
+  private decodeTrendingCursor(value: string): TrendingSalesCursor {
+    try {
+      const decoded = Buffer.from(value, 'base64url').toString();
+      const cursor = JSON.parse(decoded) as unknown;
+      if (
+        Buffer.from(decoded).toString('base64url') !== value ||
+        !Array.isArray(cursor) ||
+        !Number.isSafeInteger(cursor[0]) ||
+        cursor[0] < 1 ||
+        typeof cursor[1] !== 'string' ||
+        !/^[0-9a-f]{24}$/i.test(cursor[1])
+      ) {
+        throw new Error('invalid');
+      }
+      return { confirmedQuantity: cursor[0], eventId: cursor[1] };
+    } catch {
+      throw new BadRequestException('Invalid trending cursor');
+    }
   }
 
   async create(input: CreateBookingInput, userId: string) {
@@ -183,12 +277,27 @@ export class BookingService implements OnModuleInit {
       const reservation = await this.reserveInventory({
         booking_id: bookingId,
         user_id: userId,
+        event_id: input.eventId,
         session_id: input.sessionId,
         ticket_type_id: input.ticketTypeId,
         quantity: input.quantity,
       });
 
       reservationId = reservation.reservation_id;
+      if (
+        reservation.success !== true ||
+        !reservation.reservation_id ||
+        !reservation.ticket_type_id ||
+        !reservation.session_id ||
+        !reservation.event_id ||
+        reservation.ticket_type_id !== input.ticketTypeId ||
+        reservation.session_id !== input.sessionId ||
+        reservation.event_id !== input.eventId
+      ) {
+        throw new BadRequestException(
+          'Inventory returned an invalid reservation',
+        );
+      }
 
       const currency = reservation.currency || 'USD';
       const unitPrice = fromSmallestUnit(reservation.unit_price, currency);
@@ -196,13 +305,14 @@ export class BookingService implements OnModuleInit {
       booking = await this.bookingRepository.createPending({
         id: bookingId,
         userId,
-        eventId: input.eventId,
-        sessionId: input.sessionId,
-        ticketTypeId: input.ticketTypeId,
+        eventId: reservation.event_id,
+        sessionId: reservation.session_id,
+        ticketTypeId: reservation.ticket_type_id,
         ticketTypeName: reservation.ticket_type_name,
         ticketTypeCode: reservation.ticket_type_code,
         quantity: input.quantity,
         unitPrice,
+        unitPriceMinor: reservation.unit_price,
         currency,
         reservationId,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
@@ -220,9 +330,13 @@ export class BookingService implements OnModuleInit {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`createBooking ${bookingId} failed: ${message}`);
+      let reservationReleased = false;
       if (reservationId) {
-        await this.releaseInventory(reservationId, bookingId).catch(
-          (releaseError: unknown) => {
+        try {
+          reservationReleased = (
+            await this.releaseInventory(reservationId, bookingId)
+          ).success;
+        } catch (releaseError: unknown) {
             const releaseMessage =
               releaseError instanceof Error
                 ? releaseError.message
@@ -230,22 +344,73 @@ export class BookingService implements OnModuleInit {
             this.logger.error(
               `releaseInventory ${reservationId} for booking ${bookingId} failed: ${releaseMessage}`,
             );
-          },
-        );
+        }
       }
       if (booking) {
         await this.bookingRepository.cancel(
           booking.id,
           'Payment checkout failed',
         );
+        if (reservationReleased) {
+          await this.bookingRepository.markInventoryReleased(booking.id);
+          await this.bookingRepository.clearInventoryCompensation(booking.id);
+        }
       }
       throw error;
     }
   }
 
+  async updateBookingContact(
+    bookingId: string,
+    contact: { fullName: string; email: string },
+    userId: string,
+  ) {
+    const fullName = contact.fullName?.trim();
+    const email = contact.email?.trim().toLowerCase();
+    if (
+      !fullName ||
+      fullName.length < 2 ||
+      fullName.length > 120 ||
+      !email ||
+      email.length > 254 ||
+      !isEmail(email)
+    ) {
+      throw new BadRequestException('A valid recipient name and email are required');
+    }
+
+    const changed = await this.bookingRepository.updateRecipientIfPending(
+      bookingId,
+      userId,
+      fullName,
+      email,
+      new Date(),
+    );
+    if (changed.count !== 1) {
+      const booking = await this.bookingRepository.findById(bookingId);
+      if (!booking || booking.userId !== userId) {
+        throw new NotFoundException('Booking not found');
+      }
+      throw new BadRequestException('Booking contact can only be changed before payment');
+    }
+
+    return this.bookingRepository.findById(bookingId);
+  }
+
+  async internalBookingRecipient(bookingId: string) {
+    const booking = await this.bookingRepository.findById(bookingId);
+    if (!booking) throw new NotFoundException('Booking not found');
+    return {
+      bookingId: booking.id,
+      ownerId: booking.userId,
+      recipientFullName: booking.recipientFullName ?? null,
+      recipientEmail: booking.recipientEmail ?? null,
+    };
+  }
+
   private reserveInventory(input: CreateBookingMessage) {
     return firstValueFrom(
       this.inventoryService.reserve({
+        event_id: input.event_id,
         session_id: input.session_id,
         ticket_type_id: input.ticket_type_id,
         quantity: input.quantity,
@@ -275,7 +440,7 @@ export class BookingService implements OnModuleInit {
       this.inventoryService.release({
         reservation_id: reservationId,
         booking_id: bookingId,
-      }),
+      }).pipe(timeout({ first: INVENTORY_COMPENSATION_TIMEOUT_MS })),
     );
   }
 
@@ -308,7 +473,7 @@ export class BookingService implements OnModuleInit {
       this.inventoryService.confirm({
         reservation_id: reservationId,
         booking_id: bookingId,
-      }),
+      }).pipe(timeout({ first: INVENTORY_CONFIRM_TIMEOUT_MS })),
     );
   }
 
@@ -317,92 +482,189 @@ export class BookingService implements OnModuleInit {
       this.inventoryService.revoke({
         reservation_id: reservationId,
         booking_id: bookingId,
-      }),
+      }).pipe(timeout({ first: INVENTORY_COMPENSATION_TIMEOUT_MS })),
     );
   }
 
   private refundPayment(bookingId: string, reason: string) {
     return firstValueFrom(
-      this.paymentService.refund({ booking_id: bookingId, reason }),
+      this.paymentService
+        .refund({ booking_id: bookingId, reason })
+        .pipe(timeout({ first: REFUND_TIMEOUT_MS })),
     );
+  }
+
+  private async attemptConfirmation(booking: BookingWithInventory) {
+    const now = new Date();
+    const retryDelay = Math.min(
+      CONFIRMATION_RETRY_MAX_MS,
+      CONFIRMATION_RETRY_BASE_MS *
+        2 ** Math.min(booking.confirmationAttempts ?? 0, 4),
+    );
+    const { count } = await this.bookingRepository.claimConfirmation(
+      booking.id,
+      now,
+      retryDelay,
+    );
+    if (count !== 1) {
+      return false;
+    }
+
+    if (
+      booking.items.length === 0 ||
+      booking.items.some((item) => !item.reservationId?.trim())
+    ) {
+      await this.refundAndCancel(
+        booking.id,
+        'Booking is missing an inventory reservation',
+      );
+      return true;
+    }
+
+    for (const item of booking.items) {
+      let result: ConfirmResponse;
+      try {
+        result = await this.confirmInventory(item.reservationId!, booking.id);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.bookingRepository.noteConfirmationFailure(
+          booking.id,
+          message,
+        );
+        const attempt = (booking.confirmationAttempts ?? 0) + 1;
+        const log =
+          `confirmInventory ${item.reservationId} for booking ${booking.id} ` +
+          `has unknown outcome on retry ${attempt}: ${message}`;
+        if (attempt >= 10) {
+          this.logger.error(log);
+        } else {
+          this.logger.warn(log);
+        }
+        return true;
+      }
+
+      if (!result.success) {
+        await this.refundAndCancel(
+          booking.id,
+          result.message || 'Inventory reservation could not be confirmed',
+        );
+        return true;
+      }
+    }
+
+    const completed = await this.bookingRepository.completeConfirmation(
+      booking.id,
+    );
+    if (completed.count === 1) {
+      this.outboxProcessor.wake();
+      return true;
+    }
+
+    const current = await this.bookingRepository.findById(booking.id);
+    if (current?.status === 'CONFIRMED') {
+      return true;
+    }
+    if (
+      current &&
+      ['CANCELLED', 'EXPIRED'].includes(current.status) &&
+      (current.paymentStatus === 'PAID' ||
+        current.paymentStatus === 'REFUNDING' ||
+        current.paymentStatus === 'REFUNDED' ||
+        current.inventoryCompensationPending)
+    ) {
+      await this.refundAndCancel(
+        booking.id,
+        current.cancellationReason ?? 'Booking closed during confirmation',
+      );
+    }
+    return true;
   }
 
   async handlePaymentSucceeded(payload: PaymentEventPayload) {
     const bookingId = payload.booking_id;
     if (!bookingId) {
-      this.logger.warn('payment.succeeded without booking_id, skipped');
-      return;
+      throw new Error('payment.succeeded is missing booking_id');
     }
 
-    const { count } = await this.bookingRepository.confirmPaid(bookingId);
+    await this.bookingRepository.recordPaymentSucceeded(bookingId);
     const booking = await this.bookingRepository.findById(bookingId);
     if (!booking) {
-      this.logger.warn(`payment.succeeded for unknown booking ${bookingId}`);
+      throw new Error(`Booking ${bookingId} not found`);
+    }
+
+    if (booking.status === 'CONFIRMING' && booking.paymentStatus === 'PAID') {
+      await this.attemptConfirmation(booking);
       return;
     }
 
-    // CONFIRMED cũng chạy lại confirm: heal cho crash giữa confirmPaid và
-    // confirmInventory — Confirm idempotent nên gọi lại an toàn.
-    if (count === 1 || booking.status === 'CONFIRMED') {
-      for (const item of booking.items) {
-        if (!item.reservationId) {
-          continue;
-        }
-        const confirmed = await this.confirmInventory(
-          item.reservationId,
+    if (
+      booking.paymentStatus === 'REFUNDING' ||
+      booking.paymentStatus === 'REFUNDED'
+    ) {
+      if (
+        ['CANCELLED', 'EXPIRED'].includes(booking.status) &&
+        booking.inventoryCompensationPending
+      ) {
+        await this.refundAndCancel(
           bookingId,
-        )
-          .then((res) => res.success)
-          // ponytail: lỗi transport khi confirm coi như fail → refund.
-          // Nếu server đã confirm nhưng mất response, sold lệch — đối soát tay.
-          .catch((error: unknown) => {
-            this.logger.error(
-              `confirmInventory ${item.reservationId} failed: ${String(error)}`,
-            );
-            return false;
-          });
-        if (!confirmed) {
-          await this.refundAndCancel(
-            bookingId,
-            'Hold no longer active after payment',
-          );
-          return;
-        }
+          booking.cancellationReason ?? 'Booking already closed',
+        );
       }
       return;
     }
-
-    if (booking.paymentStatus === 'REFUNDED') {
+    if (booking.status === 'CONFIRMED') {
       return;
     }
-    // Tiền đã thu sau khi booking đóng (EXPIRED/CANCELLED) — không thể confirm
-    // vì hold đã trả, re-confirm sẽ oversell → refund.
-    await this.refundAndCancel(bookingId, 'Paid after booking closed');
+    if (
+      booking.paymentStatus === 'PAID' ||
+      ['CANCELLED', 'EXPIRED'].includes(booking.status)
+    ) {
+      await this.refundAndCancel(bookingId, 'Paid after booking closed');
+    }
+  }
+
+  async sweepConfirmingBookings(now: Date, take: number) {
+    const confirming = await this.bookingRepository.findConfirming(now, take);
+    let attempted = 0;
+    for (const booking of confirming) {
+      if (await this.attemptConfirmation(booking)) {
+        attempted++;
+      }
+    }
+    return attempted;
   }
 
   async handlePaymentExpired(payload: PaymentEventPayload) {
     const bookingId = payload.booking_id;
     if (!bookingId) {
-      this.logger.warn('payment.expired without booking_id, skipped');
-      return;
+      throw new Error('payment.expired is missing booking_id');
     }
 
     const { count } = await this.bookingRepository.expireIfPending(bookingId);
     if (count !== 1) {
+      if (!(await this.bookingRepository.findById(bookingId))) {
+        throw new Error(`Booking ${bookingId} not found`);
+      }
       return;
     }
-    await this.releaseBookingHolds(bookingId);
+    const released = await this.releaseBookingHolds(bookingId);
+    if (released) {
+      await this.bookingRepository.markInventoryReleased(bookingId);
+      await this.bookingRepository.clearInventoryCompensation(bookingId);
+    }
   }
 
   async handlePaymentFailed(payload: PaymentEventPayload) {
     const bookingId = payload.booking_id;
     if (!bookingId) {
-      this.logger.warn('payment.failed without booking_id, skipped');
-      return;
+      throw new Error('payment.failed is missing booking_id');
     }
 
     // Giữ PENDING: embedded checkout cho retry; hết expiresAt sweeper dọn.
-    await this.bookingRepository.markPaymentFailed(bookingId);
+    const { count } = await this.bookingRepository.markPaymentFailed(bookingId);
+    if (count !== 1 && !(await this.bookingRepository.findById(bookingId))) {
+      throw new Error(`Booking ${bookingId} not found`);
+    }
   }
 
   async sweepExpiredBookings(now: Date, take: number) {
@@ -415,7 +677,14 @@ export class BookingService implements OnModuleInit {
       if (count !== 1) {
         continue;
       }
-      await this.releaseBookingHolds(booking.id, booking.items);
+      const released = await this.releaseBookingHolds(
+        booking.id,
+        booking.items,
+      );
+      if (released) {
+        await this.bookingRepository.markInventoryReleased(booking.id);
+        await this.bookingRepository.clearInventoryCompensation(booking.id);
+      }
       swept++;
     }
     return swept;
@@ -428,32 +697,52 @@ export class BookingService implements OnModuleInit {
     const booking = items
       ? { items }
       : await this.bookingRepository.findById(bookingId);
-    for (const item of booking?.items ?? []) {
-      if (!item.reservationId) {
+    if (!booking?.items.length) {
+      return false;
+    }
+
+    let released = true;
+    for (const item of booking.items) {
+      if (!item.reservationId?.trim()) {
+        released = false;
+        this.logger.error(
+          `reservation missing for booking ${bookingId}; inventory compensation remains pending`,
+        );
         continue;
       }
-      await this.releaseInventory(item.reservationId, bookingId).catch(
-        (error: unknown) => {
-          this.logger.error(
-            `releaseInventory ${item.reservationId} for booking ${bookingId} failed: ${String(error)}`,
-          );
-        },
-      );
+      try {
+        const result = await this.releaseInventory(item.reservationId, bookingId);
+        if (!result.success) {
+          released = false;
+        }
+      } catch (error: unknown) {
+        released = false;
+        this.logger.error(
+          `releaseInventory ${item.reservationId} for booking ${bookingId} failed: ${String(error)}`,
+        );
+      }
     }
+    return released;
   }
 
   async handlePaymentRefunded(payload: PaymentEventPayload) {
     const bookingId = payload.booking_id;
     if (!bookingId) {
-      this.logger.warn('payment.refunded without booking_id, skipped');
-      return;
+      throw new Error('payment.refunded is missing booking_id');
     }
 
     const { count } = await this.bookingRepository.markRefunded(bookingId);
-    if (count !== 1) {
-      return;
+    const booking = await this.bookingRepository.findById(bookingId);
+    if (!booking) {
+      throw new Error(`Booking ${bookingId} not found`);
     }
-    await this.revokeSoldHolds(bookingId);
+    if (count === 1 || booking.inventoryCompensationPending) {
+      await this.finishRefundCompensation(
+        bookingId,
+        booking.items,
+        Boolean(booking.inventoryReleasedAt),
+      );
+    }
   }
 
   // Organizer chủ động refund vé lẻ — lệnh từ event-service (đã verify
@@ -461,24 +750,22 @@ export class BookingService implements OnModuleInit {
   async handleRefundRequest(payload: RefundRequestPayload) {
     const bookingId = payload.booking_id;
     if (!bookingId) {
-      this.logger.warn('booking.refund.requested without booking_id');
-      return;
+      throw new Error('booking.refund.requested is missing booking_id');
     }
 
     const booking = await this.bookingRepository.findById(bookingId);
     if (!booking) {
-      this.logger.warn(`refund request for unknown booking ${bookingId}`);
-      return;
+      throw new Error(`Booking ${bookingId} not found`);
     }
     if (booking.eventId !== payload.event_id) {
-      this.logger.warn(
-        `refund request event mismatch for booking ${bookingId}, rejected`,
-      );
-      return;
+      throw new Error(`Refund request event does not match booking ${bookingId}`);
     }
-    // Chỉ refund vé đã bán (CONFIRMED + PAID). PENDING chưa thu tiền — không
-    // có gì để hoàn; REFUNDING/REFUNDED nghĩa là request trước đã xử lý.
-    if (booking.status !== 'CONFIRMED' || booking.paymentStatus !== 'PAID') {
+    // Không bắt đầu refund khi chưa thu tiền. CONFIRMING cũng phải được đóng
+    // trước khi refund để một confirm đang bay không thể hoàn tất booking.
+    if (
+      !['CONFIRMING', 'CONFIRMED'].includes(booking.status) ||
+      booking.paymentStatus !== 'PAID'
+    ) {
       this.logger.log(
         `refund request for booking ${bookingId} in ${booking.status}/${booking.paymentStatus}, skipped`,
       );
@@ -491,39 +778,14 @@ export class BookingService implements OnModuleInit {
     );
   }
 
-  // ponytail: fan-out quét 1 lần tối đa `take` booking/event — event hàng
-  // nghìn vé cần paging/queue riêng; Redelivery Kafka chạy lại idempotent.
-  async handleEventCancelled(payload: EventCancelledPayload, take = 500) {
+  // Persist the cancellation set before the sweeper performs external calls.
+  async handleEventCancelled(payload: EventCancelledPayload) {
     const eventId = payload.event_id;
     if (!eventId) {
-      this.logger.warn('event.cancelled without event_id, skipped');
-      return;
+      throw new Error('event.cancelled is missing event_id');
     }
     const reason = payload.reason ?? 'Event cancelled';
-
-    const bookings = await this.bookingRepository.findActiveByEvent(
-      eventId,
-      take,
-    );
-    for (const booking of bookings) {
-      if (booking.status === 'PENDING') {
-        const { count } = await this.bookingRepository.cancelIfPending(
-          booking.id,
-          reason,
-        );
-        if (count === 1) {
-          await this.releaseBookingHolds(booking.id, booking.items);
-        }
-        continue;
-      }
-      // CONFIRMED: vé đã bán → refund. PAID mới là tiền đã thu.
-      if (booking.paymentStatus === 'PAID') {
-        await this.refundAndCancel(booking.id, reason);
-      } else {
-        await this.bookingRepository.cancelUnlessCancelled(booking.id, reason);
-      }
-    }
-    return bookings.length;
+    return this.bookingRepository.cancelActiveByEvent(eventId, reason);
   }
 
   // Booking đã đóng nhưng PAID = refund request chưa đến được payment-service
@@ -531,32 +793,71 @@ export class BookingService implements OnModuleInit {
   // mỗi vòng sweep an toàn; khi refund xong thì payment.refunded mark REFUNDED
   // và booking tự rơi khỏi query này.
   async sweepStuckRefunds(take: number) {
-    const stuck = await this.bookingRepository.findTerminalPaid(take);
+    const stuck = await this.bookingRepository.findRefundWork(new Date(), take);
     for (const booking of stuck) {
-      await this.refundAndCancel(booking.id, 'Paid after booking closed');
+      await this.refundAndCancel(
+        booking.id,
+        booking.cancellationReason ?? 'Paid after booking closed',
+      );
     }
     return stuck.length;
   }
 
-  // Refund là async: payment-service ghi intent rồi trả accepted, Stripe chạy
-  // sau qua BullMQ. Booking cancel ngay, paymentStatus PAID → REFUNDING
-  // ("refund in-flight") cho tới khi event payment.refunded đến; request fail
-  // trước khi intent được ghi thì booking giữ PAID và sweepStuckRefunds retry.
+  // Persist terminal state and reason before external RPCs. PAID stays
+  // discoverable by the sweeper if refund creation fails.
   private async refundAndCancel(bookingId: string, reason: string) {
-    await this.bookingRepository.markPaid(bookingId);
+    await this.bookingRepository.cancelForRefund(bookingId, reason);
+    const booking = await this.bookingRepository.findById(bookingId);
+    if (!booking) {
+      return;
+    }
+    const claimed = await this.bookingRepository.claimRefundWork(
+      bookingId,
+      new Date(),
+      COMPENSATION_RETRY_DELAY_MS,
+    );
+    if (claimed.count !== 1) {
+      return;
+    }
+    const persistedReason = booking.cancellationReason ?? reason;
+
+    let released = Boolean(booking.inventoryReleasedAt);
+    if (!released) {
+      released = await this.releaseBookingHolds(bookingId, booking.items);
+      if (released) {
+        await this.bookingRepository.markInventoryReleased(bookingId);
+      }
+    }
+
+    if (booking.paymentStatus === 'PENDING' || booking.paymentStatus === 'FAILED') {
+      if (released) {
+        await this.bookingRepository.clearInventoryCompensation(bookingId);
+      }
+      return;
+    }
+    if (booking.paymentStatus === 'REFUNDED') {
+      await this.finishRefundCompensation(bookingId, booking.items, released);
+      return;
+    }
+    if (booking.paymentStatus === 'REFUNDING') {
+      return;
+    }
+    if (booking.paymentStatus !== 'PAID') {
+      return;
+    }
+
     let result: RefundResponse;
     try {
-      result = await this.refundPayment(bookingId, reason);
+      result = await this.refundPayment(bookingId, persistedReason);
     } catch (error) {
       this.logger.error(
         `refund request for booking ${bookingId} failed: ${String(error)}`,
       );
       return;
     }
-    await this.bookingRepository.cancelUnlessCancelled(bookingId, reason);
     if (result.refunded) {
       await this.bookingRepository.markRefunded(bookingId);
-      await this.revokeSoldHolds(bookingId);
+      await this.finishRefundCompensation(bookingId, booking.items, released);
       return;
     }
     await this.bookingRepository.markRefunding(bookingId);
@@ -566,14 +867,11 @@ export class BookingService implements OnModuleInit {
      Bookings chỉ tồn tại sau khi event PUBLISHED (session chỉ schedule
      được trên event published) nên catalog luôn có trước booking đầu tiên. */
   async handleEventPublished(payload: {
-    event_id?: string;
-    organizer_id?: string;
+    event_id: string;
+    organizer_id: string;
   }) {
     if (!payload.event_id || !payload.organizer_id) {
-      this.logger.warn(
-        `event.published thiếu field: ${JSON.stringify(payload)}`,
-      );
-      return;
+      throw new Error('event.published is missing event_id or organizer_id');
     }
     await this.bookingRepository.upsertEventCatalog(
       payload.event_id,
@@ -646,17 +944,52 @@ export class BookingService implements OnModuleInit {
     const booking = items
       ? { items }
       : await this.bookingRepository.findById(bookingId);
-    for (const item of booking?.items ?? []) {
-      if (!item.reservationId) {
+    if (!booking?.items.length) {
+      return false;
+    }
+
+    let revoked = true;
+    for (const item of booking.items) {
+      if (!item.reservationId?.trim()) {
+        revoked = false;
+        this.logger.error(
+          `reservation missing for booking ${bookingId}; inventory compensation remains pending`,
+        );
         continue;
       }
-      await this.revokeInventory(item.reservationId, bookingId).catch(
-        (error: unknown) => {
+      try {
+        const result = await this.revokeInventory(item.reservationId, bookingId);
+        if (!result.success) {
+          revoked = false;
           this.logger.error(
-            `revokeInventory ${item.reservationId} for booking ${bookingId} failed: ${String(error)}`,
+            `revokeInventory ${item.reservationId} for booking ${bookingId} was not applied`,
           );
-        },
-      );
+        }
+      } catch (error: unknown) {
+        revoked = false;
+        this.logger.error(
+          `revokeInventory ${item.reservationId} for booking ${bookingId} failed: ${String(error)}`,
+        );
+      }
     }
+    return revoked;
+  }
+
+  private async finishRefundCompensation(
+    bookingId: string,
+    items: { reservationId: string | null }[],
+    alreadyReleased = false,
+  ) {
+    const released =
+      alreadyReleased || (await this.releaseBookingHolds(bookingId, items));
+    if (released) {
+      await this.bookingRepository.markInventoryReleased(bookingId);
+    }
+    const revoked = await this.revokeSoldHolds(bookingId, items);
+    if (released && revoked) {
+      await this.bookingRepository.clearInventoryCompensation(bookingId);
+      return true;
+    }
+    return false;
   }
 }
