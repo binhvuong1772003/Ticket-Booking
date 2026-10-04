@@ -187,6 +187,8 @@ services:
       NODE_ENV: development
       EVENT_PORT: 4003
       KAFKA_BROKER: kafka:29092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       BOOKING_SERVICE_URL: http://booking-service:4002/graphql
       INVENTORY_GRPC_URL: inventory-service:50051
     ports:

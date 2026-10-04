@@ -10,6 +10,7 @@ type PublicUpcomingEvent = Awaited<
 const MAX_TRENDING_PAGE_SIZE = 20;
 const BOOKING_SALES_BATCH_SIZE = 100;
 const TRENDING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const TRENDING_BUCKET_MS = 20_000;
 
 @Injectable()
 export class TrendingService {
@@ -20,15 +21,25 @@ export class TrendingService {
 
   async findTrendingEvents(input: { first?: number; city?: string }) {
     const first = input.first ?? 10;
-    if (!Number.isInteger(first) || first < 1 || first > MAX_TRENDING_PAGE_SIZE) {
+    if (
+      !Number.isInteger(first) ||
+      first < 1 ||
+      first > MAX_TRENDING_PAGE_SIZE
+    ) {
       throw new ApiError('first must be between 1 and 20', 'BAD_USER_INPUT');
     }
     const city = input.city?.trim();
     if (city && city.length > 100) {
-      throw new ApiError('city must be at most 100 characters', 'BAD_USER_INPUT');
+      throw new ApiError(
+        'city must be at most 100 characters',
+        'BAD_USER_INPUT',
+      );
     }
 
-    const since = new Date(Date.now() - TRENDING_WINDOW_MS);
+    const since = new Date(
+      Math.floor((Date.now() - TRENDING_WINDOW_MS) / TRENDING_BUCKET_MS) *
+        TRENDING_BUCKET_MS,
+    );
     const result: { rank: number; event: PublicUpcomingEvent }[] = [];
     const rankedIds = new Set<string>();
     let after: string | undefined;
