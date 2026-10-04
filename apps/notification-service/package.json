@@ -6,7 +6,7 @@
   "scripts": {
     "build": "bun run --cwd ../.. build:notification",
     "prisma:generate": "bunx prisma generate --schema prisma/schema.prisma",
-    "prisma:migrate:deploy": "bunx prisma migrate deploy --schema prisma/schema.prisma"
+    "prisma:push": "bunx prisma db push --schema prisma/schema.prisma"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.5",

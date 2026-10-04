@@ -45,3 +45,23 @@ model TicketEmailCooldown {
   @@index([requestedAt])
   @@map("ticket_email_cooldowns")
 }
+
+model NotificationEmailDelivery {
+  id          String    @id @default(uuid()) @map("_id")
+  dedupKey    String    @unique
+  kind        String
+  payload     Json?
+  status      String    @default("QUEUED")
+  attempts    Int       @default(0)
+  leaseId     String?
+  leaseUntil  DateTime?
+  messageId   String?
+  sentAt      DateTime?
+  lastErrorCode String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, leaseUntil, createdAt])
+  @@map("notification_email_deliveries")
+}

@@ -14,6 +14,8 @@ import { EmailProcessor } from './infrastructure/email/email.processor.js';
 import { AuthClient } from './infrastructure/auth/auth.client.js';
 import { PrismaModule } from '../../infrastructure/prisma/prisma.module.js';
 import { EmailDeliveryRepository } from './infrastructure/email/email-delivery.repository.js';
+import { NotificationEmailDeliveryRepository } from './infrastructure/email/notification-email-delivery.repository.js';
+import { NotificationEmailRecovery } from './infrastructure/email/notification-email-recovery.js';
 import { TicketClient } from './infrastructure/tickets/ticket.client.js';
 import { TicketResendController } from './presentation/http/ticket-resend.controller.js';
 import { BookingRecipientClient } from './infrastructure/booking/booking-recipient.client.js';
@@ -22,16 +24,18 @@ import { BookingRecipientClient } from './infrastructure/booking/booking-recipie
   imports: [
     PrismaModule,
     BullModule.registerQueue({ name: 'email' }),
-    ClientsModule.register([{
-      name: 'TICKET_GRPC',
-      transport: Transport.GRPC,
-      options: {
-        package: 'ticket',
-        protoPath: join(process.cwd(), 'libs/contracts/proto/ticket.proto'),
-        url: process.env.TICKET_GRPC_URL ?? 'localhost:50053',
-        loader: { keepCase: true },
+    ClientsModule.register([
+      {
+        name: 'TICKET_GRPC',
+        transport: Transport.GRPC,
+        options: {
+          package: 'ticket',
+          protoPath: join(process.cwd(), 'libs/contracts/proto/ticket.proto'),
+          url: process.env.TICKET_GRPC_URL ?? 'localhost:50053',
+          loader: { keepCase: true },
+        },
       },
-    }]),
+    ]),
   ],
   controllers: [
     UserRegisteredConsumer,
@@ -50,6 +54,8 @@ import { BookingRecipientClient } from './infrastructure/booking/booking-recipie
     BookingRecipientClient,
     TicketClient,
     EmailDeliveryRepository,
+    NotificationEmailDeliveryRepository,
+    NotificationEmailRecovery,
   ],
 })
 export class NotificationsModule {}

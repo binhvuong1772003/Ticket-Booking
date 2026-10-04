@@ -29,7 +29,7 @@
     "prisma:generate:ticket": "bun run --cwd apps/ticket-service prisma:generate",
     "prisma:generate:notification": "bun run --cwd apps/notification-service prisma:generate",
     "prisma:migrate:deploy:ticket": "bun run --cwd apps/ticket-service prisma:migrate:deploy",
-    "prisma:migrate:deploy:notification": "bun run --cwd apps/notification-service prisma:migrate:deploy",
+    "prisma:push:notification": "bun run --cwd apps/notification-service prisma:push",
     "prisma:push:ticket": "bun run --cwd apps/ticket-service prisma:push",
     "deploy": "nest deploy",
     "format": "prettier --write \"apps/**/*.ts\"",
