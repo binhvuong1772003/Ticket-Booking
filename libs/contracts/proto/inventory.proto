@@ -7,6 +7,7 @@ service InventoryService {
   rpc Release (ReleaseRequest) returns (ReleaseResponse);
   rpc Confirm (ConfirmRequest) returns (ConfirmResponse);
   rpc Revoke (RevokeRequest) returns (RevokeResponse);
+  rpc GetAvailability (AvailabilityRequest) returns (AvailabilityResponse);
 }
 
 message ReserveRequest {
@@ -15,6 +16,7 @@ message ReserveRequest {
   int32 quantity = 3;
   string booking_id = 4;
   string user_id = 5;
+  string event_id = 6;
 }
 
 message ReserveResponse {
@@ -26,6 +28,9 @@ message ReserveResponse {
   string ticket_type_code = 5;
   int32 unit_price = 6;
   string currency = 7;
+  string ticket_type_id = 8;
+  string session_id = 9;
+  string event_id = 10;
 }
 
 message ReleaseRequest {
@@ -58,4 +63,23 @@ message RevokeRequest {
 message RevokeResponse {
   bool success = 1;
   string message = 2;
+}
+
+message AvailabilityRequest {
+  repeated TicketTypeAvailabilityRequest ticket_types = 1;
+}
+
+message TicketTypeAvailabilityRequest {
+  string ticket_type_id = 1;
+  string session_id = 2;
+}
+
+message TicketAvailability {
+  string ticket_type_id = 1;
+  int32 available_quantity = 2;
+  string session_id = 3;
+}
+
+message AvailabilityResponse {
+  repeated TicketAvailability items = 1;
 }

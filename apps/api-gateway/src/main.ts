@@ -55,6 +55,7 @@ async function bootstrap() {
     process.env.AUTH_SERVICE_URL ?? 'http://localhost:4001/graphql',
     process.env.EVENT_SERVICE_URL ?? 'http://localhost:4003/graphql',
     process.env.BOOKING_SERVICE_URL ?? 'http://localhost:4002/graphql',
+    process.env.TICKET_SERVICE_URL ?? 'http://localhost:4005/graphql',
   ];
   await waitForSubgraphs(subgraphUrls);
   await startApp();
@@ -76,6 +77,7 @@ async function startApp() {
   }
   app.use('/graphql', jwtMiddleware);
   app.use('/uploads', jwtMiddleware);
+  app.use('/tickets', jwtMiddleware);
   const server = await app.listen(port);
   /* Default 5s keep-alive drops idle sockets too fast for Docker Desktop's
      ~200ms connect on Windows — every pause costs a new handshake through

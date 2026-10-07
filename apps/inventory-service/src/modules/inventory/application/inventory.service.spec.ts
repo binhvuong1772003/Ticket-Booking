@@ -42,3 +42,29 @@ describe('InventoryService.release', () => {
     expect(result).toEqual({ released: true });
   });
 });
+
+describe('InventoryService.getAvailability', () => {
+  it('requires a bounded, non-empty list and delegates once', async () => {
+    const getAvailability = vi.fn().mockResolvedValue([]);
+    const service = new InventoryService({
+      getAvailability,
+    } as unknown as InventoryRepository);
+
+    expect(() => service.getAvailability([])).toThrow(RpcException);
+    expect(() => service.getAvailability([
+      { ticketTypeId: 'ticket', sessionId: 'session' },
+      ...Array(200).fill({ ticketTypeId: 'id', sessionId: 'session' }),
+    ])).toThrow(RpcException);
+    expect(() => service.getAvailability([{ ticketTypeId: 'ticket', sessionId: '' }])).toThrow(RpcException);
+    await service.getAvailability([
+      { ticketTypeId: 'ticket-1', sessionId: 'session-1' },
+      { ticketTypeId: 'ticket-2', sessionId: 'session-2' },
+    ]);
+
+    expect(getAvailability).toHaveBeenCalledTimes(1);
+    expect(getAvailability).toHaveBeenCalledWith([
+      { ticketTypeId: 'ticket-1', sessionId: 'session-1' },
+      { ticketTypeId: 'ticket-2', sessionId: 'session-2' },
+    ]);
+  });
+});

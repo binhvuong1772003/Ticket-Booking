@@ -6,9 +6,11 @@ WORKDIR /app
 COPY . .
 RUN bun install --frozen-lockfile
 RUN node node_modules/prisma/build/index.js generate --schema apps/auth-service/prisma/schema.prisma && node node_modules/prisma/build/index.js generate --schema apps/booking-service/prisma/schema.prisma && node node_modules/prisma/build/index.js generate --schema apps/inventory-service/src/prisma/schema.prisma && node node_modules/prisma/build/index.js generate --schema apps/event-service/prisma/schema.prisma && node node_modules/prisma/build/index.js generate --schema apps/payment-service/src/prisma/schema.prisma
+RUN node node_modules/prisma/build/index.js generate --schema apps/ticket-service/prisma/schema.prisma
+RUN node node_modules/prisma/build/index.js generate --schema apps/notification-service/prisma/schema.prisma
 RUN bun --bun run build
 FROM node:22.14.0-bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates fonts-noto-core && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/apps ./apps

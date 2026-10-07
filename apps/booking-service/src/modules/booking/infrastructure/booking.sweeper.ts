@@ -44,6 +44,13 @@ export class BookingSweeper implements OnModuleInit, OnModuleDestroy {
       if (expired > 0) {
         this.logger.log(`Expired ${expired} booking(s)`);
       }
+      const confirming = await this.bookingService.sweepConfirmingBookings(
+        new Date(),
+        SWEEP_BATCH_SIZE,
+      );
+      if (confirming > 0) {
+        this.logger.log(`Retried confirmation for ${confirming} booking(s)`);
+      }
       const refunded =
         await this.bookingService.sweepStuckRefunds(SWEEP_BATCH_SIZE);
       if (refunded > 0) {

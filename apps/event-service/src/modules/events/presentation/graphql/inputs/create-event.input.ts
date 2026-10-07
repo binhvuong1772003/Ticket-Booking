@@ -1,6 +1,7 @@
-import { Field, InputType } from '@nestjs/graphql';
+import { Field, ID, InputType } from '@nestjs/graphql';
 import {
   IsEmail,
+  IsMongoId,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -11,6 +12,11 @@ import {
 
 @InputType()
 export class CreateEventInput {
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsMongoId()
+  categoryId?: string;
+
   @Field(() => String)
   @IsString()
   @IsNotEmpty()
@@ -61,4 +67,11 @@ export class CreateEventInput {
   })
   @MaxLength(2048)
   coverImageUrl?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @Matches(/^https:\/\/res\.cloudinary\.com\//)
+  @MaxLength(2048)
+  posterImageUrl?: string;
 }

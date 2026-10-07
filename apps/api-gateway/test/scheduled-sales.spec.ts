@@ -15,12 +15,14 @@ import { EventsResolver } from '../../event-service/src/modules/events/presentat
 import { EventService } from '../../event-service/src/modules/events/application/event.service';
 import { EventSessionService } from '../../event-service/src/modules/events/application/event-session.service';
 import { TicketTypeService } from '../../event-service/src/modules/events/application/ticket-type.service';
+import { TrendingService } from '../../event-service/src/modules/events/application/trending.service';
 import { TicketTypeRepository } from '../../event-service/src/modules/events/infrastructure/ticket-type.repository';
 import { EventsSessionRepository } from '../../event-service/src/modules/events/infrastructure/event-session.repository';
 import { OutboxProcessor } from '../../event-service/src/modules/events/infrastructure/outbox.processor';
 import { BookingResolver } from '../../booking-service/src/modules/booking/presentation/graphql/booking.resolver';
 import { BookingService } from '../../booking-service/src/modules/booking/application/booking.service';
 import { BookingRepository } from '../../booking-service/src/modules/booking/infrastructure/booking.repository';
+import { OutboxProcessor as BookingOutboxProcessor } from '../../booking-service/src/modules/booking/infrastructure/outbox.processor';
 
 // Real resolvers, JWT guards and federation transport; DB and payment are test doubles.
 describe('scheduled sales through GraphQL gateway', () => {
@@ -29,6 +31,7 @@ describe('scheduled sales through GraphQL gateway', () => {
   const id = '000000000000000000000001';
   let gateway: INestApplication;
   let auth: ApolloServer;
+  let ticketSubgraph: ApolloServer;
   let authorization: string;
   const reserve = vi.fn();
   const createPending = vi.fn(async (data) => ({ ...data, status: 'PENDING' }));
@@ -101,6 +104,7 @@ describe('scheduled sales through GraphQL gateway', () => {
         },
         { provide: EventSessionService, useValue: {} },
         { provide: TicketTypeService, useValue: ticketService },
+        { provide: TrendingService, useValue: { findTrendingEvents: vi.fn() } },
       ],
     }).compile();
     const events = eventModule.createNestApplication({ logger: false });
@@ -140,6 +144,7 @@ describe('scheduled sales through GraphQL gateway', () => {
         BookingResolver,
         BookingService,
         { provide: BookingRepository, useValue: { createPending } },
+        { provide: BookingOutboxProcessor, useValue: { wake: vi.fn() } },
         {
           provide: 'INVENTORY_GRPC',
           useValue: { getService: () => ({ reserve }) },
@@ -166,7 +171,17 @@ describe('scheduled sales through GraphQL gateway', () => {
     const { url } = await startStandaloneServer(auth, {
       listen: { port: 0, host: '127.0.0.1' },
     });
+    ticketSubgraph = new ApolloServer({
+      schema: buildSubgraphSchema({
+        typeDefs: parse('type Query { ticketFixtureHealth: String! }'),
+        resolvers: { Query: { ticketFixtureHealth: () => 'ok' } },
+      }),
+    });
+    const { url: ticketUrl } = await startStandaloneServer(ticketSubgraph, {
+      listen: { port: 0, host: '127.0.0.1' },
+    });
     vi.stubEnv('AUTH_SERVICE_URL', url);
+    vi.stubEnv('TICKET_SERVICE_URL', ticketUrl);
     vi.stubEnv('EVENT_SERVICE_URL', (await events.getUrl()) + '/graphql');
     vi.stubEnv('BOOKING_SERVICE_URL', (await bookings.getUrl()) + '/graphql');
     vi.stubEnv('OBSERVE_APP_KEY', '');
@@ -183,6 +198,7 @@ describe('scheduled sales through GraphQL gateway', () => {
   afterAll(async () => {
     for (const app of apps.reverse()) await app.close();
     await auth?.stop();
+    await ticketSubgraph?.stop();
     vi.unstubAllEnvs();
   });
 
@@ -316,6 +332,9 @@ describe('scheduled sales through GraphQL gateway', () => {
       of({
         success: true,
         reservation_id: 'hold1',
+        ticket_type_id: id,
+        session_id: id,
+        event_id: id,
         ticket_type_name: 'VIP',
         ticket_type_code: 'VIP',
         unit_price: 100,

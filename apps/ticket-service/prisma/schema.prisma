@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/ticket-prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum TicketStatus {
+  ISSUED
+  CHECKED_IN
+  VOIDED
+}
+
+enum CheckInResult {
+  ACCEPTED
+  ALREADY_CHECKED_IN
+  VOIDED
+  WRONG_SESSION
+  INVALID_QR
+  FORBIDDEN
+}
+
+model Ticket {
+  id String @id @default(uuid()) @db.Uuid
+
+  // IDs thuộc service khác, không tạo foreign key.
+  bookingId     String
+  bookingItemId String
+  ownerId       String
+  eventId       String
+  sessionId     String
+  ticketTypeId  String
+
+  // Vé thứ mấy trong BookingItem, bắt đầu từ 1.
+  ordinal Int
+
+  // Snapshot tại thời điểm cấp vé.
+  ticketTypeName String
+  ticketTypeCode String
+  eventTitle     String?
+  posterImageUrl String?
+  coverImageUrl  String?
+  venueName      String?
+  venueAddress   String?
+  startsAt       DateTime? @db.Timestamptz(3)
+  endsAt         DateTime? @db.Timestamptz(3)
+  timezone       String?
+  unitPrice      Decimal?  @db.Decimal(12, 3)
+  currency       String?   @db.VarChar(3)
+  sessionVersion Int?
+  templateVersion Int      @default(1)
+  renderRevision  Int      @default(1)
+
+  status            TicketStatus @default(ISSUED)
+  credentialVersion Int          @default(1)
+
+  issuedAt    DateTime  @default(now()) @db.Timestamptz(3)
+  checkedInAt DateTime? @db.Timestamptz(3)
+  checkedInBy String?
+  voidedAt    DateTime? @db.Timestamptz(3)
+  voidReason  String?
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  checkInLogs CheckInLog[]
+
+  // Chống cấp trùng khi xử lý lại booking.confirmed.
+  @@unique([bookingItemId, ordinal])
+  @@index([bookingId])
+  @@index([ownerId(sort: Desc), issuedAt(sort: Desc), id(sort: Desc)])
+  @@index([sessionId, status])
+  @@index([eventId, status])
+  @@map("tickets")
+}
+
+model BookingTicketState {
+  bookingId String    @id
+  voidedAt  DateTime? @db.Timestamptz(3)
+  voidReason String?
+
+  @@map("booking_ticket_states")
+}
+
+model ScannerAssignment {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId    String
+  sessionId String
+  grantedBy String
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+
+  @@unique([userId, sessionId])
+  @@index([sessionId])
+  @@map("scanner_assignments")
+}
+
+model CheckInLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  // Client giữ nguyên requestId khi retry cùng lượt quét.
+  requestId String @db.Uuid
+  scannerId String
+
+  // Nullable vì QR không hợp lệ có thể không xác định được vé.
+  ticketId String? @db.Uuid
+  ticket   Ticket? @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+
+  sessionId String
+  gateId    String?
+  result    CheckInResult
+
+  // Hash nội dung yêu cầu để phát hiện requestId bị dùng lại
+  // với QR hoặc suất diễn khác. Không lưu QR thô.
+  requestHash String @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([scannerId, requestId])
+  @@index([ticketId, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("check_in_logs")
+}
+
+model OutboxEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  type        String
+  aggregateId String
+  payload     Json
+
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  publishedAt   DateTime? @db.Timestamptz(3)
+  nextAttemptAt DateTime  @default(now()) @db.Timestamptz(3)
+  attempts      Int       @default(0)
+  lastError     String?
+
+  @@index([publishedAt, nextAttemptAt, createdAt])
+  @@map("outbox_events")
+}

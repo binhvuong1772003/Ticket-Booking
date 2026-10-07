@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
 import { createObserveModule } from '@nestjs/observe';
 import { GraphQLModule } from '@nestjs/graphql';
+import { ClientsModule, Transport } from '@nestjs/microservices';
+import { join } from 'node:path';
 import { ApolloGatewayDriver, ApolloGatewayDriverConfig } from '@nestjs/apollo';
 import { IntrospectAndCompose, RemoteGraphQLDataSource } from '@apollo/gateway';
 import { GoogleOAuthController } from './modules/oauth/google-oauth.controller.js';
 import { UploadsController } from './modules/uploads/uploads.controller.js';
+import { TicketsController } from './modules/tickets/tickets.controller.js';
 
 const observeAppKey = process.env.OBSERVE_APP_KEY?.trim();
 const observeAppSecret = process.env.OBSERVE_APP_SECRET?.trim();
@@ -15,6 +18,8 @@ const eventServiceUrl =
   process.env.EVENT_SERVICE_URL ?? 'http://localhost:4003/graphql';
 const bookingServiceUrl =
   process.env.BOOKING_SERVICE_URL ?? 'http://localhost:4002/graphql';
+const ticketServiceUrl =
+  process.env.TICKET_SERVICE_URL ?? 'http://localhost:4005/graphql';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 class AuthenticatedDataSource extends RemoteGraphQLDataSource {
@@ -46,6 +51,18 @@ class AuthenticatedDataSource extends RemoteGraphQLDataSource {
 }
 @Module({
   imports: [
+    ClientsModule.register([
+      {
+        name: 'TICKET_SERVICE',
+        transport: Transport.GRPC,
+        options: {
+          package: 'ticket',
+          protoPath: join(process.cwd(), 'libs/contracts/proto/ticket.proto'),
+          url: process.env.TICKET_GRPC_URL ?? 'localhost:50053',
+          loader: { keepCase: true },
+        },
+      },
+    ]),
     ...(observeEnabled
       ? [
           ObserveModule.forRoot({
@@ -84,12 +101,16 @@ class AuthenticatedDataSource extends RemoteGraphQLDataSource {
               name: 'booking',
               url: bookingServiceUrl,
             },
+            {
+              name: 'tickets',
+              url: ticketServiceUrl,
+            },
           ],
         }),
       },
     }),
   ],
-  controllers: [GoogleOAuthController, UploadsController],
+  controllers: [GoogleOAuthController, UploadsController, TicketsController],
 })
 export class AppModule {}
 

@@ -1,0 +1,42 @@
+{
+  "name": "@ticket-booking/ticket-service",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run --cwd ../.. build:ticket",
+    "start": "bun run --cwd ../.. start:ticket",
+    "start:dev": "bun run --cwd ../.. start:ticket",
+    "start:prod": "bun run --cwd ../.. start:ticket:prod",
+    "backfill:snapshots": "bun run src/scripts/backfill-ticket-snapshots.ts",
+    "prisma:generate": "bunx prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "bunx prisma migrate deploy --schema prisma/schema.prisma",
+    "prisma:push": "bunx prisma db push --schema prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@apollo/subgraph": "2.14.4",
+    "@grpc/grpc-js": "^1.13.4",
+    "@grpc/proto-loader": "^0.7.15",
+    "@nestjs/apollo": "^14.0.0",
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/graphql": "^14.0.0",
+    "@nestjs/jwt": "^12.0.1",
+    "@nestjs/microservices": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "@prisma/client": "6.19.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "dotenv": "^17.4.2",
+    "graphql": "^16.11.0",
+    "qrcode": "^1.5.4",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "jsqr": "^1.4.0",
+    "prisma": "6.19.0"
+  }
+}

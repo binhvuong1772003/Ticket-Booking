@@ -18,6 +18,8 @@ export type CreateInventoryData = {
 };
 export type ReserveInventoryData = {
   ticketTypeId: string;
+  sessionId: string;
+  eventId: string;
   quantity: number;
   bookingId: string;
   userId: string;
@@ -72,12 +74,100 @@ export class InventoryRepository {
       include: { holds: true },
     });
   }
+
+  async getAvailability(ticketTypes: { ticketTypeId: string; sessionId: string }[]) {
+    const sessionByTicketType = new Map(
+      ticketTypes.map((item) => [item.ticketTypeId, item.sessionId]),
+    );
+    const now = new Date();
+    const inventories = await this.prisma.inventory.findMany({
+      where: { ticketTypeId: { in: [...sessionByTicketType.keys()] } },
+      select: {
+        ticketTypeId: true,
+        sessionId: true,
+        total: true,
+        available: true,
+        sold: true,
+        sessionActive: true,
+        typeActive: true,
+        salesStartAt: true,
+        holds: {
+          where: { status: 'ACTIVE', expiresAt: { lte: now } },
+          select: { quantity: true },
+        },
+      },
+    });
+    return inventories.flatMap((inventory) => {
+      if (inventory.sessionId !== sessionByTicketType.get(inventory.ticketTypeId)) {
+        return [];
+      }
+      const expiredHolds = inventory.holds.reduce(
+        (quantity, hold) => quantity + hold.quantity,
+        0,
+      );
+      const onSale =
+        inventory.sessionActive &&
+        inventory.typeActive &&
+        (!inventory.salesStartAt || inventory.salesStartAt <= now);
+      return [{
+        ticketTypeId: inventory.ticketTypeId,
+        sessionId: inventory.sessionId,
+        availableQuantity: onSale
+          ? Math.max(
+              0,
+              Math.min(
+                inventory.total - inventory.sold,
+                inventory.available + expiredHolds,
+              ),
+            )
+          : 0,
+      }];
+    });
+  }
+
   async reserve(data: ReserveInventoryData) {
     const now = new Date();
     return this.prisma.$transaction(async (tx) => {
+      const initialInventory = await tx.inventory.findUnique({
+        where: { ticketTypeId: data.ticketTypeId },
+      });
+      if (!initialInventory) {
+        throw new RpcException({ code: 3, message: 'Ticket type not found' });
+      }
+      if (!initialInventory.sessionId) {
+        throw new RpcException({
+          code: 14,
+          message: 'Ticket type session mapping is not ready',
+        });
+      }
+      if (initialInventory.sessionId !== data.sessionId) {
+        throw new RpcException({
+          code: 3,
+          message: 'Ticket type does not belong to the requested session',
+        });
+      }
+
+      const catalog = await tx.sessionCatalog.findUnique({
+        where: { sessionId: initialInventory.sessionId },
+      });
+      if (!catalog?.eventId) {
+        throw new RpcException({
+          code: 14,
+          message: 'Session event mapping is not ready',
+        });
+      }
+      if (catalog.eventId !== data.eventId) {
+        throw new RpcException({
+          code: 3,
+          message: 'Session does not belong to the requested event',
+        });
+      }
+
       const result = await tx.inventory.updateMany({
         where: {
           ticketTypeId: data.ticketTypeId,
+          // Keep the checked ticket type → session binding in the atomic write.
+          sessionId: initialInventory.sessionId,
           // Cổng bán: session đã SCHEDULED + hạng vé chưa bị ẩn/xóa.
           sessionActive: true,
           typeActive: true,
@@ -107,7 +197,22 @@ export class InventoryRepository {
         const inventory = await tx.inventory.findUnique({
           where: { ticketTypeId: data.ticketTypeId },
         });
-        if (!inventory || !inventory.sessionActive || !inventory.typeActive) {
+        if (!inventory) {
+          throw new RpcException({ code: 3, message: 'Ticket type not found' });
+        }
+        if (!inventory.sessionId) {
+          throw new RpcException({
+            code: 14,
+            message: 'Ticket type session mapping is not ready',
+          });
+        }
+        if (inventory.sessionId !== data.sessionId) {
+          throw new RpcException({
+            code: 3,
+            message: 'Ticket type does not belong to the requested session',
+          });
+        }
+        if (!inventory.sessionActive || !inventory.typeActive) {
           throw new RpcException({
             code: 9,
             message: 'Ticket type is not on sale',
@@ -139,7 +244,13 @@ export class InventoryRepository {
           expiresAt: new Date(Date.now() + 10 * 60 * 1000),
         },
       });
-      return { hold, inventory };
+      return {
+        hold,
+        inventory,
+        ticketTypeId: inventory.ticketTypeId,
+        sessionId: initialInventory.sessionId,
+        eventId: catalog.eventId,
+      };
     });
   }
 
@@ -154,6 +265,15 @@ export class InventoryRepository {
         data: { status: 'RELEASED', releasedAt: new Date() },
       });
       if (result.count !== 1) {
+        const hold = await tx.inventoryHold.findUnique({
+          where: { id: data.reservationId },
+        });
+        if (
+          ['RELEASED', 'EXPIRED'].includes(hold?.status ?? '') &&
+          hold?.bookingId === data.bookingId
+        ) {
+          return { released: true as const, alreadyReleased: true };
+        }
         return { released: false as const };
       }
       const hold = await tx.inventoryHold.findUniqueOrThrow({
@@ -225,7 +345,10 @@ export class InventoryRepository {
         const hold = await tx.inventoryHold.findUnique({
           where: { id: data.reservationId },
         });
-        if (hold?.status === 'RELEASED' && hold.bookingId === data.bookingId) {
+        if (
+          ['RELEASED', 'EXPIRED'].includes(hold?.status ?? '') &&
+          hold?.bookingId === data.bookingId
+        ) {
           return { revoked: true as const, alreadyRevoked: true };
         }
         return { revoked: false as const };
@@ -324,12 +447,32 @@ export class InventoryRepository {
     });
   }
 
-  async upsertSessionCatalog(sessionId: string, status: string) {
-    return this.prisma.sessionCatalog.upsert({
+  async upsertSessionCatalog(
+    sessionId: string,
+    status: string,
+    eventId?: string,
+  ) {
+    const catalog = await this.prisma.sessionCatalog.upsert({
       where: { sessionId },
-      create: { sessionId, status },
+      create: { sessionId, status, ...(eventId ? { eventId } : {}) },
       update: { status },
     });
+    if (eventId) {
+      // Atomic compare-and-set: status always updates above, but a binding
+      // may only be filled once (or confirmed with the same event).
+      await this.prisma.sessionCatalog.updateMany({
+        where: {
+          sessionId,
+          OR: [
+            { eventId: null },
+            { eventId: { isSet: false } },
+            { eventId },
+          ],
+        },
+        data: { eventId },
+      });
+    }
+    return catalog;
   }
 
   async sessionStatusOf(sessionId: string) {

@@ -36,6 +36,9 @@ export class EventSessionModel {
   @Field({ nullable: true })
   countryCode?: string;
 
+  @Field(() => ID, { nullable: true })
+  placeId?: string;
+
   @Field(() => GraphQLISODateTime, { nullable: true })
   startsAt?: Date;
 
@@ -48,8 +51,14 @@ export class EventSessionModel {
   @Field(() => Int, { nullable: true })
   capacity?: number;
 
+  @Field()
+  currency!: string;
+
   @Field(() => EventSessionStatus)
   status!: EventSessionStatus;
+
+  @Field(() => Int)
+  version!: number;
 
   @Field(() => GraphQLISODateTime, { nullable: true })
   cancelledAt?: Date;

@@ -9,6 +9,7 @@ const draftSession = {
   id: 's1',
   status: 'DRAFT',
   capacity: 100,
+  currency: 'VND',
   event: { status: 'PUBLISHED' },
 };
 
@@ -131,7 +132,7 @@ describe('TicketTypeService', () => {
     );
     expect(result).toBe(ticketType);
     expect(createWithOutbox).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionStatus: 'DRAFT' }),
+      expect.objectContaining({ sessionStatus: 'DRAFT', currency: 'VND' }),
     );
     expect(wake).toHaveBeenCalled();
   });

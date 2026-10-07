@@ -10,6 +10,7 @@ import {
 
 export enum BookingStatus {
   PENDING = 'PENDING',
+  CONFIRMING = 'CONFIRMING',
   CONFIRMED = 'CONFIRMED',
   CANCELLED = 'CANCELLED',
   EXPIRED = 'EXPIRED',
@@ -75,6 +76,12 @@ export class BookingModel {
 
   @Field(() => PaymentStatus)
   paymentStatus!: PaymentStatus;
+
+  @Field(() => String, { nullable: true })
+  recipientFullName?: string | null;
+
+  @Field(() => String, { nullable: true })
+  recipientEmail?: string | null;
 
   @Field(() => Float)
   subtotal!: number;

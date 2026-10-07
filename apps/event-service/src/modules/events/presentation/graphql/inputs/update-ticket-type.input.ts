@@ -43,12 +43,6 @@ export class UpdateTicketTypeInput extends PickType(CreateTicketTypeInput, [
   @Min(0)
   price?: number;
 
-  @Field(() => String, { nullable: true })
-  @IsOptional()
-  @IsString()
-  @MaxLength(3)
-  currency?: string;
-
   @Field(() => Int, { nullable: true })
   @IsOptional()
   @IsInt()

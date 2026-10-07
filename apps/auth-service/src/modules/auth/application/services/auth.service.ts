@@ -256,14 +256,14 @@ export class AuthService {
   async userContact(userId: string) {
     const user = await db.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, fullName: true },
+      select: { id: true, email: true, fullName: true, emailVerifiedAt: true },
     });
 
     if (!user) {
       throw new ApiError('User not found', { code: 'NOT_FOUND' });
     }
 
-    return user;
+    return { ...user, emailVerified: Boolean(user.emailVerifiedAt) };
   }
 
   async updateProfile(userId: string, input: UpdateProfileInput) {

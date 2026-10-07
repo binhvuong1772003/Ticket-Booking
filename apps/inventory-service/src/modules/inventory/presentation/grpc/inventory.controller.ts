@@ -4,6 +4,7 @@ import { InventoryService } from '../../application/inventory.service';
 
 type ReserveRequest = {
   session_id: string;
+  event_id: string;
   ticket_type_id: string;
   quantity: number;
   booking_id: string;
@@ -25,22 +26,32 @@ type RevokeRequest = {
   booking_id: string;
 };
 
+type AvailabilityRequest = {
+  ticket_types: { ticket_type_id: string; session_id: string }[];
+};
+
 @Controller()
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @GrpcMethod('InventoryService', 'Reserve')
   async reserve(input: ReserveRequest) {
-    const { hold, inventory } = await this.inventoryService.reserve({
+    const reservation = await this.inventoryService.reserve({
       ticketTypeId: input.ticket_type_id,
+      sessionId: input.session_id,
+      eventId: input.event_id,
       quantity: input.quantity,
       bookingId: input.booking_id,
       userId: input.user_id,
     });
+    const { hold, inventory } = reservation;
 
     return {
       success: true,
       reservation_id: hold.id,
+      ticket_type_id: reservation.ticketTypeId,
+      session_id: reservation.sessionId,
+      event_id: reservation.eventId,
       message: 'Inventory reserved',
       ticket_type_name: inventory.name ?? '',
       ticket_type_code: inventory.code ?? '',
@@ -84,6 +95,23 @@ export class InventoryController {
     return {
       success: result.revoked,
       message: result.revoked ? 'Sold hold revoked' : 'Hold not confirmed',
+    };
+  }
+
+  @GrpcMethod('InventoryService', 'GetAvailability')
+  async getAvailability(input: AvailabilityRequest) {
+    const items = await this.inventoryService.getAvailability(
+      (input.ticket_types ?? []).map((item) => ({
+        ticketTypeId: item.ticket_type_id,
+        sessionId: item.session_id,
+      })),
+    );
+    return {
+      items: items.map((item) => ({
+        ticket_type_id: item.ticketTypeId,
+        available_quantity: item.availableQuantity,
+        session_id: item.sessionId,
+      })),
     };
   }
 }

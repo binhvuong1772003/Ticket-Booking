@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/notification-prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model EmailDelivery {
+  id                String    @id @default(uuid()) @map("_id")
+  dedupKey          String    @unique
+  bookingId         String
+  ownerId           String
+  recipientFullName String?
+  recipientEmail    String?
+  ticketIds         Json
+  templateVersion   Int       @default(1)
+  // QUEUED | SENDING | SENT | FAILED — Mongo connector không có enum native
+  status            String    @default("QUEUED")
+  attempts          Int       @default(0)
+  lastErrorCode     String?
+  // Không @unique: Mongo unique index coi null là 1 giá trị → chỉ cho 1
+  // delivery chưa gửi. messageId được sinh từ delivery.id nên vốn đã duy nhất.
+  messageId         String?
+  sentAt            DateTime?
+  leaseUntil        DateTime?
+  requireVerified   Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, leaseUntil, createdAt])
+  @@index([messageId])
+  @@map("email_deliveries")
+}
+
+model TicketEmailCooldown {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId     String
+  ticketId    String
+  requestedAt DateTime @default(now())
+
+  @@unique([ownerId, ticketId])
+  @@index([requestedAt])
+  @@map("ticket_email_cooldowns")
+}
+
+model NotificationEmailDelivery {
+  id          String    @id @default(uuid()) @map("_id")
+  dedupKey    String    @unique
+  kind        String
+  payload     Json?
+  status      String    @default("QUEUED")
+  attempts    Int       @default(0)
+  leaseId     String?
+  leaseUntil  DateTime?
+  messageId   String?
+  sentAt      DateTime?
+  lastErrorCode String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, leaseUntil, createdAt])
+  @@map("notification_email_deliveries")
+}
